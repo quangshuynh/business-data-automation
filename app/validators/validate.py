@@ -76,9 +76,9 @@ def normalize_phone(phone):
 
     if len(digits) == 10:
         return (
-            f"({digits[:3]}) "
-            f"{digits[3:6]}-"
-            f"{digits[6:]}"
+            f"({digits[:3]}) " #(555)
+            f"{digits[3:6]}-"  #555-
+            f"{digits[6:]}"    #5555
         )
 
     return None
