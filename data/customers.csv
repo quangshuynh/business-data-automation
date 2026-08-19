@@ -1,0 +1,5 @@
+customer_id,name,email,phone
+1001,John Smith,john@example.com,5855551234
+1002,Jane Doe,JANE@EXAMPLE.COM,(585) 555-2222
+1003,Bob Jones,bob@example.com,585-555-3333
+1004,Alice Brown,invalid-email,5855554444

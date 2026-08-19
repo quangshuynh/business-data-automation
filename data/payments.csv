@@ -1,0 +1,4 @@
+payment_id,order_id,amount,status
+9001,5001,129.99,paid
+9002,5002,75.50,paid
+9003,5003,100.00,partial
