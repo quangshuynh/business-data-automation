@@ -96,3 +96,21 @@ def validate_positive_amounts(df, column_name, dataset_name):
 
     if not invalid.empty:
         raise ValueError( f"{dataset_name} contains negative values in {column_name}" )
+
+
+def separate_invalid_customers(customers):
+    """
+    separates valid customer records (missing phone, email but valid customer_id)from invalid customer records (such as missing customer_id)
+    :param customers: customer dataframe containing validation columns
+    :returns: tuple containing valid and invalid customer dataframes
+    """
+    invalid_mask = (
+        ~customers["email_valid"]
+        | ~customers["phone_valid"]
+        | customers["name"].isna()
+    )
+
+    invalid_customers = customers[invalid_mask].copy()
+    valid_customers = customers[~invalid_mask].copy()
+
+    return valid_customers, invalid_customers
