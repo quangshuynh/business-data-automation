@@ -135,3 +135,54 @@ def get_customer_validation_errors(row):
         errors.append("invalid phone")
 
     return "; ".join(errors)
+
+
+def get_order_validation_errors(row, valid_customer_ids, invalid_customer_ids):
+    """
+    returns validation errors for an order record
+    :param row: order dataframe row to validate
+    :param valid_customer_ids: set of valid customer ids
+    :param invalid_customer_ids: set of quarantined customer ids
+    :returns: semicolon separated string containing validation errors
+    """
+    errors = []
+
+    if row["total"] <= 0:
+        errors.append("invalid total")
+
+    if pd.isna(row["date"]):
+        errors.append("invalid date")
+
+    customer_id = row["customer_id"]
+
+    if customer_id in invalid_customer_ids:
+        errors.append("customer failed validation")
+    elif customer_id not in valid_customer_ids:
+        errors.append("customer not found")
+
+    return "; ".join(errors)
+
+
+def separate_invalid_orders(orders, valid_customers, invalid_customers, ):
+    """
+    separates valid order records from invalid order records
+    :param orders: order dataframe to validate
+    :param valid_customers: validated customer dataframe
+    :param invalid_customers: quarantined customer dataframe
+    :returns: tuple containing valid and invalid order dataframes
+    """
+    valid_customer_ids = set(valid_customers["customer_id"])
+    invalid_customer_ids = set(invalid_customers["customer_id"])
+
+    orders = orders.copy()
+    orders["date"] = pd.to_datetime( orders["date"], errors="coerce", )
+    orders["validation_errors"] = orders.apply( get_order_validation_errors, axis=1, args=(valid_customer_ids, invalid_customer_ids,), )
+
+    invalid_mask = orders["validation_errors"] != ""
+
+    invalid_orders = orders[invalid_mask].copy()
+    valid_orders = orders[~invalid_mask].copy()
+
+    valid_orders = valid_orders.drop( columns=["validation_errors"] )
+
+    return valid_orders, invalid_orders

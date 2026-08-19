@@ -1,6 +1,6 @@
 from pathlib import Path
 import pandas as pd
-from app.validators.validate import (is_valid_email, normalize_email, normalize_phone, validate_positive_amounts, validate_required_columns, validate_unique_ids, separate_invalid_customers)
+from app.validators.validate import (is_valid_email, normalize_email, normalize_phone, validate_positive_amounts, validate_required_columns, validate_unique_ids, separate_invalid_customers, separate_invalid_orders, )
 
 
 DATA_DIR = Path("data") #src/data
@@ -100,9 +100,11 @@ def validate_and_clean_data(customers, orders, payments):
     customers["email_valid"] = customers["email"].apply(is_valid_email)
     customers["phone_valid"] = customers["phone"].notna()
 
+    # separate valid and invalid info
     valid_customers, invalid_customers = separate_invalid_customers(customers)
+    valid_orders, invalid_orders = separate_invalid_orders(orders, valid_customers, invalid_customers)
 
-    return valid_customers, invalid_customers, orders, payments
+    return valid_customers, invalid_customers, valid_orders, invalid_orders, payments
 
 
 def main():
@@ -113,19 +115,23 @@ def main():
     OUTPUT_DIR.mkdir(exist_ok=True)
 
     customers, orders, payments = load_data() # load
-    valid_customers, invalid_customers, orders, payments = validate_and_clean_data(customers, orders, payments) # validate and clean
-    report = build_report(valid_customers, orders, payments) # build report
+    valid_customers, invalid_customers, valid_orders, invalid_orders, payments = validate_and_clean_data(customers, orders, payments) # validate and clean
+    report = build_report(valid_customers, valid_orders, payments) # build report
 
     output_path = OUTPUT_DIR / "reconciliation_report.csv" #output file
     report.to_csv(output_path, index=False)
 
     invalid_customers_path = OUTPUT_DIR / "invalid_customers.csv"
     invalid_customers.to_csv(invalid_customers_path, index=False)
-    print(f"Invalid customers: {len(invalid_customers)}")
-    print(f"Invalid customer records: {invalid_customers_path}")
+
+    invalid_orders_path = OUTPUT_DIR / "invalid_orders.csv"
+    invalid_orders.to_csv(invalid_orders_path, index=False)
 
     print(f"Customers processed: {len(customers)}")
-    print(f"Orders processed: {len(orders)}")
+    print(f"Valid customers: {len(valid_customers)}")
+    print(f"Invalid customers: {len(invalid_customers)}")
+    print(f"Valid orders: {len(valid_orders)}")
+    print(f"Invalid orders: {len(invalid_orders)}")
     print(f"Payments processed: {len(payments)}")
     print(
         f"Orders with missing customers: "
@@ -136,6 +142,8 @@ def main():
         f"{(report['payment_status'] == 'unpaid_or_partial').sum()}"
     )
     print(f"Report generated: {output_path}")
+    print(f"Invalid customer records: {invalid_customers_path}")
+    print(f"Invalid order records: {invalid_orders_path}")
 
 
 #main guard
