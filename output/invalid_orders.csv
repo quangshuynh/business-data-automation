@@ -1,0 +1,2 @@
+order_id,customer_id,date,total,validation_errors
+5004,9999,2026-08-03,42.99,customer not found
