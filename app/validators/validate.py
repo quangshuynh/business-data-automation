@@ -100,7 +100,7 @@ def validate_positive_amounts(df, column_name, dataset_name):
 
 def separate_invalid_customers(customers):
     """
-    separates valid customer records (missing phone, email but valid customer_id)from invalid customer records (missing customer_id)
+    separates valid customer records from invalid customer records 
     :param customers: customer dataframe containing validation columns
     :returns: tuple containing valid and invalid customer dataframes
     """

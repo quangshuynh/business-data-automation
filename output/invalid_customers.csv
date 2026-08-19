@@ -1,0 +1,2 @@
+customer_id,name,email,phone,email_valid,phone_valid,validation_errors
+1004,Alice Brown,invalid-email,(585) 555-4444,False,True,invalid email
