@@ -1,0 +1,5 @@
+order_id,customer_id,date,total,name,email,phone,amount_paid,balance_due,customer_found,payment_status
+5001,1001,2026-08-01,129.99,John Smith,john@example.com,5855551234,129.99,0.0,True,paid
+5002,1002,2026-08-02,75.5,Jane Doe,JANE@EXAMPLE.COM,(585) 555-2222,75.5,0.0,True,paid
+5003,1001,2026-08-03,210.0,John Smith,john@example.com,5855551234,100.0,110.0,True,unpaid_or_partial
+5004,9999,2026-08-03,42.99,,,,0.0,42.99,False,unpaid_or_partial
