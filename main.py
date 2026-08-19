@@ -110,8 +110,9 @@ def main():
     """
     OUTPUT_DIR.mkdir(exist_ok=True)
 
-    customers, orders, payments = load_data()
-    report = build_report(customers, orders, payments)
+    customers, orders, payments = load_data() # load
+    customers, orders, payments = validate_and_clean_data(customers, orders, payments) # validate and clean
+    report = build_report(customers, orders, payments) # build report
 
     output_path = OUTPUT_DIR / "reconciliation_report.csv" #output file
     report.to_csv(output_path, index=False)
