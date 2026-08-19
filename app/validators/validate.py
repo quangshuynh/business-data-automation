@@ -65,7 +65,7 @@ def is_valid_email(email):
 
 def normalize_phone(phone):
     """
-    normalizes a phone number into a standard ten digit format
+    normalizes a phone number into a standard ten digit format. For example: (585) 555-5555
     :param phone: phone number to normalize
     :returns: formatted phone number or none
     """
