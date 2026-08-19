@@ -1,0 +1,71 @@
+from pathlib import Path
+import pandas as pd
+
+
+DATA_DIR = Path("data") #src/data
+OUTPUT_DIR = Path("output") #src/output
+
+
+def load_data():
+    """
+    load customer, order, and payment data from CSV files
+    :returns: a tuple containing the customers, orders, and payments dataframes
+    """
+    customers = pd.read_csv(DATA_DIR / "customers.csv")
+    orders = pd.read_csv(DATA_DIR / "orders.csv")
+    payments = pd.read_csv(DATA_DIR / "payments.csv")
+    return customers, orders, payments
+
+
+def build_report(customers, orders, payments):
+    """
+    builds a reconciliation report by combining customer, order, and payment data
+    :param customers: dataframe containing customer information
+    :param orders: dataframe containing order information
+    :param payments: dataframe containing payment information
+    :returns: a dataframe containing the completed reconciliation report
+    """
+    report = orders.merge( customers, on="customer_id", how="left" )
+
+    payment_totals = ( payments.groupby("order_id", as_index=False)["amount"].sum().rename(columns={"amount": "amount_paid"}) )
+
+    report = report.merge( payment_totals, on="order_id", how="left" )
+
+    report["amount_paid"] = report["amount_paid"].fillna(0)
+    report["balance_due"] = report["total"] - report["amount_paid"]
+    report["customer_found"] = report["name"].notna()
+    report["payment_status"] = report["balance_due"].apply( lambda balance: "paid" if balance <= 0 else "unpaid_or_partial" )
+
+    return report
+
+
+def main():
+    """
+    runs the reconciliation process and generate the output report
+    :returns: None
+    """
+    OUTPUT_DIR.mkdir(exist_ok=True)
+
+    customers, orders, payments = load_data()
+    report = build_report(customers, orders, payments)
+
+    output_path = OUTPUT_DIR / "reconciliation_report.csv" #output file
+    report.to_csv(output_path, index=False)
+
+    print(f"Customers processed: {len(customers)}")
+    print(f"Orders processed: {len(orders)}")
+    print(f"Payments processed: {len(payments)}")
+    print(
+        f"Orders with missing customers: "
+        f"{(~report['customer_found']).sum()}"
+    )
+    print(
+        f"Unpaid or partial orders: "
+        f"{(report['payment_status'] == 'unpaid_or_partial').sum()}"
+    )
+    print(f"Report generated: {output_path}")
+
+
+#main guard
+if __name__ == "__main__":
+    main()
