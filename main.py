@@ -39,6 +39,69 @@ def build_report(customers, orders, payments):
 
     return report
 
+def validate_and_clean_data(customers, orders, payments):
+    """
+    validate required data and clean customer contact information
+    :param customers: dataframe containing customer information
+    :param orders: dataframe containing order information
+    :param payments: dataframe containing payment information
+    :returns: a tuple containing the validated and cleaned dataframes
+    """
+    validate_required_columns(
+        customers, #dataframe
+        ["customer_id", "name", "email", "phone"], #col id
+        "customers", # dataset name
+    )
+
+    validate_required_columns(
+        orders,
+        ["order_id", "customer_id", "date", "total"],
+        "orders",
+    )
+
+    validate_required_columns(
+        payments,
+        ["payment_id", "order_id", "amount", "status"],
+        "payments",
+    )
+
+    validate_unique_ids(
+        customers,
+        "customer_id",
+        "customers",
+    )
+
+    validate_unique_ids(
+        orders,
+        "order_id",
+        "orders",
+    )
+
+    validate_unique_ids(
+        payments,
+        "payment_id",
+        "payments",
+    )
+
+    validate_positive_amounts(
+        orders,
+        "total",
+        "orders",
+    )
+
+    validate_positive_amounts(
+        payments,
+        "amount",
+        "payments",
+    )
+
+    customers["email"] = customers["email"].apply(normalize_email)
+    customers["phone"] = customers["phone"].apply(normalize_phone)
+    customers["email_valid"] = customers["email"].apply(is_valid_email)
+    customers["phone_valid"] = customers["phone"].notna()
+
+    return customers, orders, payments
+
 
 def main():
     """
