@@ -186,3 +186,70 @@ def separate_invalid_orders(orders, valid_customers, invalid_customers, ):
     valid_orders = valid_orders.drop( columns=["validation_errors"] )
 
     return valid_orders, invalid_orders
+
+def get_payment_validation_errors(
+    row,
+    valid_order_ids,
+    invalid_order_ids,
+    allowed_statuses,
+):
+    """
+    returns validation errors for a payment record
+    :param row: payment dataframe row to validate
+    :param valid_order_ids: set of valid order ids
+    :param invalid_order_ids: set of quarantined order ids
+    :param allowed_statuses: set of allowed payment statuses
+    :returns: semicolon separated string containing validation errors
+    """
+    errors = []
+
+    if row["amount"] <= 0:
+        errors.append("invalid amount")
+
+    order_id = row["order_id"]
+
+    if order_id in invalid_order_ids:
+        errors.append("order failed validation")
+    elif order_id not in valid_order_ids:
+        errors.append("order not found")
+
+    status = str(row["status"]).strip().lower()
+
+    if status not in allowed_statuses:
+        errors.append("invalid status")
+
+    return "; ".join(errors)
+
+
+def separate_invalid_payments(payments, valid_orders, invalid_orders, ):
+    """
+    separates valid payment records from invalid payment records
+    :param payments: payment dataframe to validate
+    :param valid_orders: validated order dataframe
+    :param invalid_orders: quarantined order dataframe
+    :returns: tuple containing valid and invalid payment dataframes
+    """
+    valid_order_ids = set(valid_orders["order_id"])
+    invalid_order_ids = set(invalid_orders["order_id"])
+
+    allowed_statuses = {
+        "paid",
+        "partial",
+        "pending",
+        "refunded",
+    }
+
+    payments = payments.copy()
+
+    payments["status"] = ( payments["status"].astype(str).str.strip().str.lower() )
+
+    payments["validation_errors"] = payments.apply( get_payment_validation_errors, axis=1, args=(valid_order_ids, invalid_order_ids, allowed_statuses,), )
+
+    invalid_mask = payments["validation_errors"] != ""
+
+    invalid_payments = payments[invalid_mask].copy()
+    valid_payments = payments[~invalid_mask].copy()
+
+    valid_payments = valid_payments.drop( columns=["validation_errors"] )
+
+    return valid_payments, invalid_payments
