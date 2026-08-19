@@ -1,6 +1,6 @@
 from pathlib import Path
 import pandas as pd
-from app.validators.validate import (is_valid_email, normalize_email, normalize_phone, validate_positive_amounts, validate_required_columns, validate_unique_ids, separate_invalid_customers, separate_invalid_orders, separate_invalid_payments)
+from app.validators.validate import (is_valid_email, normalize_email, normalize_phone, validate_required_columns, validate_unique_ids, separate_invalid_customers, separate_invalid_orders, separate_invalid_payments)
 
 
 DATA_DIR = Path("data") #src/data
@@ -18,9 +18,31 @@ def load_data():
     return customers, orders, payments
 
 
+def calculate_financial_status(order_total, amount_paid):
+    """
+    calculates an order's financial status based on the order total and amount paid
+    :param order_total: total amount due for the order
+    :param amount_paid: total amount paid toward the order
+    :returns: calculated financial status
+    """
+    order_total = round(order_total, 2)
+    amount_paid = round(amount_paid, 2)
+
+    if amount_paid == 0:
+        return "unpaid"
+
+    if amount_paid < order_total:
+        return "partial"
+
+    if amount_paid == order_total:
+        return "paid"
+
+    return "overpaid"
+
+
 def build_report(customers, orders, payments):
     """
-    builds a reconciliation report by combining customer, order, and payment data
+    builds a reconciliation report by combining customer, order and payment data
     :param customers: dataframe containing customer information
     :param orders: dataframe containing order information
     :param payments: dataframe containing payment information
@@ -30,12 +52,13 @@ def build_report(customers, orders, payments):
 
     payment_totals = ( payments.groupby("order_id", as_index=False)["amount"].sum().rename(columns={"amount": "amount_paid"}) )
 
-    report = report.merge( payment_totals, on="order_id", how="left" )
+    report = report.merge(payment_totals, on="order_id", how="left")
 
     report["amount_paid"] = report["amount_paid"].fillna(0)
     report["balance_due"] = report["total"] - report["amount_paid"]
     report["customer_found"] = report["name"].notna()
-    report["payment_status"] = report["balance_due"].apply( lambda balance: "paid" if balance <= 0 else "unpaid_or_partial" )
+
+    report["financial_status"] = report.apply( lambda row: calculate_financial_status(row["total"], row["amount_paid"],), axis=1, )
 
     return report
 
@@ -83,18 +106,6 @@ def validate_and_clean_data(customers, orders, payments):
         "payments",
     )
 
-    validate_positive_amounts(
-        orders,
-        "total",
-        "orders",
-    )
-
-    # validate_positive_amounts(
-    #     payments,
-    #     "amount",
-    #     "payments",
-    # )
-
     customers["email"] = customers["email"].apply(normalize_email)
     customers["phone"] = customers["phone"].apply(normalize_phone)
     customers["email_valid"] = customers["email"].apply(is_valid_email)
@@ -117,6 +128,7 @@ def main():
 
     customers, orders, payments = load_data() # load
     valid_customers, invalid_customers, valid_orders, invalid_orders, valid_payments, invalid_payments = validate_and_clean_data(customers, orders, payments) # validate and clean
+    
     report = build_report(valid_customers, valid_orders, valid_payments) # build report
 
     output_path = OUTPUT_DIR / "reconciliation_report.csv" #output file
@@ -143,8 +155,20 @@ def main():
         f"{(~report['customer_found']).sum()}"
     )
     print(
-        f"Unpaid or partial orders: "
-        f"{(report['payment_status'] == 'unpaid_or_partial').sum()}"
+        f"Unpaid orders: "
+        f"{(report['financial_status'] == 'unpaid').sum()}"
+    )
+    print(
+        f"Partial orders: "
+        f"{(report['financial_status'] == 'partial').sum()}"
+    )
+    print(
+        f"Paid orders: "
+        f"{(report['financial_status'] == 'paid').sum()}"
+    )
+    print(
+        f"Overpaid orders: "
+        f"{(report['financial_status'] == 'overpaid').sum()}"
     )
     print(f"Report generated: {output_path}")
     print(f"Invalid customer records: {invalid_customers_path}")

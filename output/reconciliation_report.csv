@@ -1,4 +1,4 @@
-order_id,customer_id,date,total,name,email,phone,email_valid,phone_valid,amount_paid,balance_due,customer_found,payment_status
+order_id,customer_id,date,total,name,email,phone,email_valid,phone_valid,amount_paid,balance_due,customer_found,financial_status
 5001,1001,2026-08-01,129.99,John Smith,john@example.com,(585) 555-1234,True,True,129.99,0.0,True,paid
 5002,1002,2026-08-02,75.5,Jane Doe,jane@example.com,(585) 555-2222,True,True,75.5,0.0,True,paid
-5003,1001,2026-08-03,210.0,John Smith,john@example.com,(585) 555-1234,True,True,100.0,110.0,True,unpaid_or_partial
+5003,1001,2026-08-03,210.0,John Smith,john@example.com,(585) 555-1234,True,True,100.0,110.0,True,partial
