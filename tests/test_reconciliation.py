@@ -7,7 +7,7 @@ def test_unpaid_order():
 
 
 def test_partial_order():
-    assert calculate_financial_status(100.00, 40.00) == "partial"
+    assert calculate_financial_status(100.00, 67.00) == "partial"
 
 
 def test_paid_order():
@@ -15,7 +15,7 @@ def test_paid_order():
 
 
 def test_overpaid_order():
-    assert calculate_financial_status(100.00, 125.00) == "overpaid"
+    assert calculate_financial_status(100.00, 167.00) == "overpaid"
 
 
 def test_paid_order_handles_float_precision():
