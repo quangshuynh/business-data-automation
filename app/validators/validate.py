@@ -100,7 +100,7 @@ def validate_positive_amounts(df, column_name, dataset_name):
 
 def separate_invalid_customers(customers):
     """
-    separates valid customer records (missing phone, email but valid customer_id)from invalid customer records (such as missing customer_id)
+    separates valid customer records (missing phone, email but valid customer_id)from invalid customer records (missing customer_id)
     :param customers: customer dataframe containing validation columns
     :returns: tuple containing valid and invalid customer dataframes
     """
@@ -113,4 +113,25 @@ def separate_invalid_customers(customers):
     invalid_customers = customers[invalid_mask].copy()
     valid_customers = customers[~invalid_mask].copy()
 
+    invalid_customers["validation_errors"] = invalid_customers.apply( get_customer_validation_errors, axis=1, )
+
     return valid_customers, invalid_customers
+
+def get_customer_validation_errors(row):
+    """
+    returns validation errors for a customer record
+    :param row: customer dataframe row to validate
+    :returns: semicolon separated string containing validation errors
+    """
+    errors = []
+
+    if pd.isna(row["name"]):
+        errors.append("missing name")
+
+    if not row["email_valid"]:
+        errors.append("invalid email")
+
+    if not row["phone_valid"]:
+        errors.append("invalid phone")
+
+    return "; ".join(errors)
