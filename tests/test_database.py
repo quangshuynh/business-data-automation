@@ -4,6 +4,7 @@ from unittest.mock import MagicMock
 import pandas as pd
 import pytest
 from sqlalchemy import create_engine, inspect, select
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from app.db import database
@@ -192,3 +193,41 @@ def test_persist_valid_data_inserts_records_without_duplicates():
         assert order.date == date(2026, 8, 1)
         assert float(order.total) == 100.00
         assert payment.status == "paid"
+
+
+def test_database_rejects_invalid_payment_status():
+    """
+    tests that database constraints reject an unsupported payment status
+    :returns: none
+    """
+    engine = create_engine("sqlite:///:memory:")
+    Base.metadata.create_all(engine)
+
+    with Session(engine) as session:
+        session.add(
+            Customer(
+                customer_id=1001,
+                name="John Smith",
+                email="john@example.com",
+                phone="(585) 555-1234",
+            )
+        )
+        session.add(
+            Order(
+                order_id=5001,
+                customer_id=1001,
+                date=date(2026, 8, 1),
+                total=100.00,
+            )
+        )
+        session.add(
+            Payment(
+                payment_id=9001,
+                order_id=5001,
+                amount=100.00,
+                status="unsupported",
+            )
+        )
+
+        with pytest.raises(IntegrityError):
+            session.commit()

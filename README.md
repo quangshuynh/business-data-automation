@@ -98,3 +98,13 @@ docker compose down
 ```
 
 Use `docker compose down --volumes` only when the local PostgreSQL data should also be deleted. Local non-Docker development remains supported through the PostgreSQL, CLI, and Uvicorn commands documented above.
+
+## Testing
+
+Run the full suite with:
+
+```powershell
+python -m pytest
+```
+
+The suite covers structural validation, record quarantine, reconciliation edge cases, SQLAlchemy models and constraints, idempotent persistence, transaction handling, API endpoints and expected errors, and the complete CSV-to-output pipeline. Database and API integration tests use isolated in-memory databases, so the standard suite does not require PostgreSQL or Docker.

@@ -192,3 +192,49 @@ def test_build_report_aggregates_multiple_payments():
     assert row["amount_paid"] == 100.00
     assert row["balance_due"] == 0.00
     assert row["financial_status"] == "paid"
+
+
+def test_build_report_handles_an_empty_payment_dataset():
+    """
+    tests that a report with no payment records marks orders as unpaid
+    :returns: none
+    """
+    customers = pd.DataFrame(
+        [{"customer_id": 1001, "name": "John Smith"}]
+    )
+    orders = pd.DataFrame(
+        [{"order_id": 5001, "customer_id": 1001, "total": 100.00}]
+    )
+    payments = pd.DataFrame(columns=["payment_id", "order_id", "amount", "status"])
+
+    report = build_report(customers, orders, payments)
+
+    assert report.iloc[0]["amount_paid"] == 0
+    assert report.iloc[0]["financial_status"] == "unpaid"
+
+
+def test_build_report_does_not_derive_status_from_source_status():
+    """
+    tests that financial status is based on amounts rather than source status
+    :returns: none
+    """
+    customers = pd.DataFrame(
+        [{"customer_id": 1001, "name": "John Smith"}]
+    )
+    orders = pd.DataFrame(
+        [{"order_id": 5001, "customer_id": 1001, "total": 100.00}]
+    )
+    payments = pd.DataFrame(
+        [
+            {
+                "payment_id": 9001,
+                "order_id": 5001,
+                "amount": 100.00,
+                "status": "pending",
+            }
+        ]
+    )
+
+    report = build_report(customers, orders, payments)
+
+    assert report.iloc[0]["financial_status"] == "paid"
