@@ -132,6 +132,15 @@ def test_build_report_calculates_financial_statuses():
     assert statuses[5003] == "paid"
     assert statuses[5004] == "overpaid"
 
+    rows = report.set_index("order_id")
+    assert rows.loc[5001, "payment_count"] == 0
+    assert rows.loc[5001, "outstanding_balance"] == 100.00
+    assert rows.loc[5001, "discrepancy_flags"] == "order has no payments"
+    assert rows.loc[5004, "overpayment_amount"] == 25.00
+    assert rows.loc[5004, "outstanding_balance"] == 0.00
+    assert rows.loc[5004, "discrepancy_flags"] == "order is overpaid"
+    assert report["reconciliation_timestamp"].nunique() == 1
+
 
 def test_build_report_aggregates_multiple_payments():
     """
@@ -190,6 +199,7 @@ def test_build_report_aggregates_multiple_payments():
     row = report.iloc[0]
 
     assert row["amount_paid"] == 100.00
+    assert row["payment_count"] == 3
     assert row["balance_due"] == 0.00
     assert row["financial_status"] == "paid"
 
@@ -210,6 +220,7 @@ def test_build_report_handles_an_empty_payment_dataset():
     report = build_report(customers, orders, payments)
 
     assert report.iloc[0]["amount_paid"] == 0
+    assert report.iloc[0]["payment_count"] == 0
     assert report.iloc[0]["financial_status"] == "unpaid"
 
 
@@ -238,3 +249,35 @@ def test_build_report_does_not_derive_status_from_source_status():
     report = build_report(customers, orders, payments)
 
     assert report.iloc[0]["financial_status"] == "paid"
+    assert report.iloc[0]["discrepancy_flags"] == ""
+
+
+def test_build_report_flags_paid_source_with_partial_amount():
+    """
+    tests that a paid source status with a partial amount is flagged
+    :returns: none
+    """
+    customers = pd.DataFrame(
+        [{"customer_id": 1001, "name": "John Smith"}]
+    )
+    orders = pd.DataFrame(
+        [{"order_id": 5001, "customer_id": 1001, "total": 100.00}]
+    )
+    payments = pd.DataFrame(
+        [
+            {
+                "payment_id": 9001,
+                "order_id": 5001,
+                "amount": 40.00,
+                "status": "paid",
+            }
+        ]
+    )
+
+    report = build_report(customers, orders, payments)
+
+    assert report.iloc[0]["financial_status"] == "partial"
+    assert (
+        report.iloc[0]["discrepancy_flags"]
+        == "source status says paid but amount is partial"
+    )

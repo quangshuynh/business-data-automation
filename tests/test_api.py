@@ -119,9 +119,11 @@ def test_reconciliation_uses_persisted_records(api_client):
     results = {row["order_id"]: row for row in response.json()}
 
     assert results[5001]["financial_status"] == "paid"
+    assert results[5001]["payment_count"] == 1
     assert float(results[5001]["balance_due"]) == 0.00
     assert results[5002]["financial_status"] == "unpaid"
     assert float(results[5002]["balance_due"]) == 75.00
+    assert results[5002]["discrepancy_flags"] == "order has no payments"
 
 
 def test_data_endpoint_handles_missing_database_configuration(monkeypatch):

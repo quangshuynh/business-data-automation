@@ -108,3 +108,18 @@ python -m pytest
 ```
 
 The suite covers structural validation, record quarantine, reconciliation edge cases, SQLAlchemy models and constraints, idempotent persistence, transaction handling, API endpoints and expected errors, and the complete CSV-to-output pipeline. Database and API integration tests use isolated in-memory databases, so the standard suite does not require PostgreSQL or Docker.
+
+## Reconciliation report
+
+The report derives `financial_status` from the order total and the sum of valid payment amounts. It does not trust the source payment status as the calculated result.
+
+Each reconciled order includes:
+
+- `amount_paid` and the original signed `balance_due`
+- non-negative `outstanding_balance` and `overpayment_amount`
+- `payment_count`
+- `financial_status` with unpaid, partial, paid, or overpaid values
+- `discrepancy_flags`
+- a UTC `reconciliation_timestamp`
+
+Current discrepancy flags identify orders with no payments, overpaid orders, and orders where a source payment says paid while the aggregated amount is only unpaid or partial. A last-payment date is intentionally omitted because the current payment input does not contain a transaction date. Refund behavior is also unchanged pending the dedicated transaction-model milestone.

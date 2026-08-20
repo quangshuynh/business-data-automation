@@ -24,6 +24,11 @@ def test_csv_pipeline_generates_report_and_quarantine_outputs(
 
     assert report["order_id"].tolist() == [5001]
     assert report.iloc[0]["financial_status"] == "paid"
+    assert report.iloc[0]["payment_count"] == 1
+    assert report.iloc[0]["outstanding_balance"] == 0.00
+    assert report.iloc[0]["overpayment_amount"] == 0.00
+    assert report.iloc[0]["discrepancy_flags"] != "order has no payments"
+    assert pd.notna(report.iloc[0]["reconciliation_timestamp"])
     assert report.iloc[0]["email"] == "john@example.com"
     assert invalid_customers.iloc[0]["validation_errors"] == "invalid email"
     assert invalid_orders.iloc[0]["validation_errors"] == "customer failed validation"

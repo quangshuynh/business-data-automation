@@ -1,4 +1,4 @@
-from datetime import date
+from datetime import date, datetime
 from decimal import Decimal
 
 from pydantic import BaseModel, ConfigDict
@@ -54,6 +54,11 @@ class ReconciliationResponse(BaseModel):
     email: str
     phone: str
     amount_paid: Decimal
+    payment_count: int
     balance_due: Decimal
+    outstanding_balance: Decimal
+    overpayment_amount: Decimal
     customer_found: bool
     financial_status: str
+    discrepancy_flags: str
+    reconciliation_timestamp: datetime
