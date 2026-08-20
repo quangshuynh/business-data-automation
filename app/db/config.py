@@ -1,6 +1,14 @@
 import os
 
 
+def is_database_configured():
+    """
+    checks whether database persistence is configured
+    :returns: true when a database connection string is configured
+    """
+    return bool(os.getenv("DATABASE_URL"))
+
+
 def get_database_url():
     """
     returns the PostgreSQL connection string from the environment

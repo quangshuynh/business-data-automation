@@ -1,4 +1,16 @@
+from sqlalchemy.exc import SQLAlchemyError
+
+from app.db.database import (
+    create_database_engine,
+    create_session_factory,
+    database_session,
+    initialize_database,
+)
 from app.db.models import Customer, Order, Payment
+
+
+class DatabasePersistenceError(Exception):
+    """error raised when validated records cannot be persisted"""
 
 
 def insert_customers(session, customers):
@@ -9,15 +21,15 @@ def insert_customers(session, customers):
     :returns: number of customer records added
     """
     records = customers.to_dict(orient="records")
-    session.add_all(
-        Customer(
-            customer_id=record["customer_id"],
-            name=record["name"],
-            email=record["email"],
-            phone=record["phone"],
+    for record in records:
+        session.merge(
+            Customer(
+                customer_id=record["customer_id"],
+                name=record["name"],
+                email=record["email"],
+                phone=record["phone"],
+            )
         )
-        for record in records
-    )
     return len(records)
 
 
@@ -29,17 +41,17 @@ def insert_orders(session, orders):
     :returns: number of order records added
     """
     records = orders.to_dict(orient="records")
-    session.add_all(
-        Order(
-            order_id=record["order_id"],
-            customer_id=record["customer_id"],
-            date=record["date"].date()
-            if hasattr(record["date"], "date")
-            else record["date"],
-            total=record["total"],
+    for record in records:
+        session.merge(
+            Order(
+                order_id=record["order_id"],
+                customer_id=record["customer_id"],
+                date=record["date"].date()
+                if hasattr(record["date"], "date")
+                else record["date"],
+                total=record["total"],
+            )
         )
-        for record in records
-    )
     return len(records)
 
 
@@ -51,13 +63,46 @@ def insert_payments(session, payments):
     :returns: number of payment records added
     """
     records = payments.to_dict(orient="records")
-    session.add_all(
-        Payment(
-            payment_id=record["payment_id"],
-            order_id=record["order_id"],
-            amount=record["amount"],
-            status=record["status"],
+    for record in records:
+        session.merge(
+            Payment(
+                payment_id=record["payment_id"],
+                order_id=record["order_id"],
+                amount=record["amount"],
+                status=record["status"],
+            )
         )
-        for record in records
-    )
     return len(records)
+
+
+def persist_valid_data(customers, orders, payments, engine=None):
+    """
+    persists validated pipeline records in a single database transaction
+    :param customers: dataframe containing validated customers
+    :param orders: dataframe containing validated orders
+    :param payments: dataframe containing validated payments
+    :param engine: optional SQLAlchemy database engine
+    :returns: dictionary containing persisted record counts
+    """
+    database_engine = engine or create_database_engine()
+    owns_engine = engine is None
+
+    try:
+        initialize_database(database_engine)
+        session_factory = create_session_factory(database_engine)
+
+        with database_session(session_factory) as session:
+            counts = {
+                "customers": insert_customers(session, customers),
+                "orders": insert_orders(session, orders),
+                "payments": insert_payments(session, payments),
+            }
+
+        return counts
+    except SQLAlchemyError as error:
+        raise DatabasePersistenceError(
+            "validated records could not be persisted"
+        ) from error
+    finally:
+        if owns_engine:
+            database_engine.dispose()

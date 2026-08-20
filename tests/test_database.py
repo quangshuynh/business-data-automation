@@ -7,9 +7,9 @@ from sqlalchemy import create_engine, inspect, select
 from sqlalchemy.orm import Session
 
 from app.db import database
-from app.db.config import get_database_url
+from app.db.config import get_database_url, is_database_configured
 from app.db.models import Base, Customer, Order, Payment
-from app.db.persistence import insert_customers, insert_orders, insert_payments
+from app.db.persistence import persist_valid_data
 
 
 def test_get_database_url_reads_environment_variable(monkeypatch):
@@ -37,6 +37,19 @@ def test_get_database_url_requires_environment_variable(monkeypatch):
         match="DATABASE_URL environment variable is required",
     ):
         get_database_url()
+
+
+def test_is_database_configured_reflects_environment(monkeypatch):
+    """
+    tests that optional persistence detects database configuration
+    :param monkeypatch: pytest fixture for changing environment variables
+    :returns: none
+    """
+    monkeypatch.delenv("DATABASE_URL", raising=False)
+    assert is_database_configured() is False
+
+    monkeypatch.setenv("DATABASE_URL", "postgresql+psycopg://configured")
+    assert is_database_configured() is True
 
 
 def test_models_define_tables_and_relationships():
@@ -104,13 +117,12 @@ def test_database_session_rolls_back_on_error():
     session.close.assert_called_once_with()
 
 
-def test_persistence_functions_insert_validated_records():
+def test_persist_valid_data_inserts_records_without_duplicates():
     """
-    tests that validated dataframes are inserted through the persistence layer
+    tests that repeated persistence updates records without creating duplicates
     :returns: none
     """
     engine = create_engine("sqlite:///:memory:")
-    Base.metadata.create_all(engine)
 
     customers = pd.DataFrame(
         [
@@ -145,16 +157,22 @@ def test_persistence_functions_insert_validated_records():
         ]
     )
 
-    with Session(engine) as session:
-        assert insert_customers(session, customers) == 1
-        assert insert_orders(session, orders) == 1
-        assert insert_payments(session, payments) == 1
-        session.commit()
+    first_counts = persist_valid_data(customers, orders, payments, engine)
+    customers.loc[0, "name"] = "John A. Smith"
+    second_counts = persist_valid_data(customers, orders, payments, engine)
 
+    assert first_counts == {"customers": 1, "orders": 1, "payments": 1}
+    assert second_counts == first_counts
+
+    with Session(engine) as session:
         customer = session.scalar(select(Customer))
         order = session.scalar(select(Order))
         payment = session.scalar(select(Payment))
 
+        assert len(session.scalars(select(Customer)).all()) == 1
+        assert len(session.scalars(select(Order)).all()) == 1
+        assert len(session.scalars(select(Payment)).all()) == 1
+        assert customer.name == "John A. Smith"
         assert customer.email == "john@example.com"
         assert order.date == date(2026, 8, 1)
         assert float(order.total) == 100.00

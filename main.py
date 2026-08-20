@@ -1,6 +1,8 @@
 from pathlib import Path
 import pandas as pd
 import logging
+from app.db.config import is_database_configured
+from app.db.persistence import DatabasePersistenceError, persist_valid_data
 from app.reconciliation.reconcile import build_report
 from app.validators.validate import (is_valid_email, normalize_email, normalize_phone, validate_required_columns, validate_unique_ids, separate_invalid_customers, separate_invalid_orders, separate_invalid_payments)
 
@@ -106,6 +108,26 @@ def main():
             orders,
             payments,
         )
+
+        if is_database_configured():
+            logger.info("persisting validated records to PostgreSQL")
+
+            try:
+                persisted_counts = persist_valid_data(
+                    valid_customers,
+                    valid_orders,
+                    valid_payments,
+                )
+                logger.info(
+                    "database persistence complete: %s customers, %s orders, %s payments",
+                    persisted_counts["customers"],
+                    persisted_counts["orders"],
+                    persisted_counts["payments"],
+                )
+            except DatabasePersistenceError as error:
+                logger.error("database persistence failed: %s", error)
+        else:
+            logger.info("database persistence skipped: DATABASE_URL is not configured")
 
         logger.info("building reconciliation report")
 
