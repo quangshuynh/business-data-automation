@@ -50,3 +50,17 @@ Interactive OpenAPI documentation is available at `http://127.0.0.1:8000/docs`. 
 - `GET /reconciliation`
 
 The health endpoint does not require a database connection. Data endpoints return HTTP 503 when database configuration or access is unavailable. Reconciliation results are calculated through the existing reconciliation module rather than duplicated in the API.
+
+## Project structure
+
+Application responsibilities are separated by their actual runtime roles:
+
+- `app/api` contains HTTP routes, dependencies, and response schemas
+- `app/db` contains SQLAlchemy models, sessions, and persistence
+- `app/reconciliation` contains financial reconciliation rules
+- `app/services` coordinates database records with reusable business logic
+- `app/validators` contains structural and record-level validation
+- `app/config.py` contains environment configuration
+- `main.py` remains the CSV batch entry point
+
+The API routes remain thin: persisted reconciliation adaptation lives in `app/services/reconciliation_service.py`, while the underlying calculations remain in `app/reconciliation/reconcile.py`. No repository interfaces or additional class hierarchy are used because the current application does not require them.
