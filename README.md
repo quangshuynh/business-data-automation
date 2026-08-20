@@ -64,3 +64,37 @@ Application responsibilities are separated by their actual runtime roles:
 - `main.py` remains the CSV batch entry point
 
 The API routes remain thin: persisted reconciliation adaptation lives in `app/services/reconciliation_service.py`, while the underlying calculations remain in `app/reconciliation/reconcile.py`. No repository interfaces or additional class hierarchy are used because the current application does not require them.
+
+## Docker setup
+
+Docker Compose runs the FastAPI application and PostgreSQL together while keeping PostgreSQL data in a named volume.
+
+1. Create the local environment file and replace every `change_me` value:
+
+   ```powershell
+   Copy-Item .env.example .env
+   ```
+
+2. Build and start the services:
+
+   ```powershell
+   docker compose up --build
+   ```
+
+3. Open the API documentation at `http://localhost:8000/docs`.
+
+The application container waits for PostgreSQL to pass its health check, initializes missing SQLAlchemy tables, and then starts Uvicorn. PostgreSQL data persists in the `postgres_data` volume.
+
+To load the sample CSV data into PostgreSQL and regenerate the mounted output files while the database is running:
+
+```powershell
+docker compose run --rm app python main.py
+```
+
+Stop the services with:
+
+```powershell
+docker compose down
+```
+
+Use `docker compose down --volumes` only when the local PostgreSQL data should also be deleted. Local non-Docker development remains supported through the PostgreSQL, CLI, and Uvicorn commands documented above.
