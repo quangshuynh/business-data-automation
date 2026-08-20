@@ -55,6 +55,7 @@ def api_client():
                 payment_id=9001,
                 order_id=5001,
                 amount=Decimal("100.00"),
+                transaction_type="payment",
                 status="paid",
             )
         )
@@ -104,6 +105,7 @@ def test_list_business_records(api_client):
     assert orders.status_code == 200
     assert [order["order_id"] for order in orders.json()] == [5001, 5002]
     assert payments.status_code == 200
+    assert payments.json()[0]["transaction_type"] == "payment"
     assert payments.json()[0]["status"] == "paid"
 
 

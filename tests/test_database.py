@@ -168,6 +168,7 @@ def test_persist_valid_data_inserts_records_without_duplicates():
                 "payment_id": 9001,
                 "order_id": 5001,
                 "amount": 100.00,
+                "transaction_type": "payment",
                 "status": "paid",
             }
         ]
@@ -192,12 +193,28 @@ def test_persist_valid_data_inserts_records_without_duplicates():
         assert customer.email == "john@example.com"
         assert order.date == date(2026, 8, 1)
         assert float(order.total) == 100.00
+        assert payment.transaction_type == "payment"
         assert payment.status == "paid"
 
 
-def test_database_rejects_invalid_payment_status():
+@pytest.mark.parametrize(
+    ("amount", "transaction_type", "payment_status"),
+    [
+        (100.00, "payment", "unsupported"),
+        (-10.00, "refund", "refunded"),
+        (10.00, "unknown", "paid"),
+    ],
+)
+def test_database_rejects_invalid_payment_data(
+    amount,
+    transaction_type,
+    payment_status,
+):
     """
-    tests that database constraints reject an unsupported payment status
+    tests that database constraints reject invalid payment transaction data
+    :param amount: transaction amount to store
+    :param transaction_type: transaction type to store
+    :param payment_status: source payment status to store
     :returns: none
     """
     engine = create_engine("sqlite:///:memory:")
@@ -224,8 +241,9 @@ def test_database_rejects_invalid_payment_status():
             Payment(
                 payment_id=9001,
                 order_id=5001,
-                amount=100.00,
-                status="unsupported",
+                amount=amount,
+                transaction_type=transaction_type,
+                status=payment_status,
             )
         )
 

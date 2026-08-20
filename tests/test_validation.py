@@ -167,12 +167,14 @@ def test_invalid_payment_is_quarantined():
                 "payment_id": 9001,
                 "order_id": 5001,
                 "amount": 100.00,
+                "transaction_type": "payment",
                 "status": "paid",
             },
             {
                 "payment_id": 9002,
                 "order_id": 5001,
                 "amount": -25.00,
+                "transaction_type": "payment",
                 "status": "paid",
             },
         ]
@@ -187,6 +189,71 @@ def test_invalid_payment_is_quarantined():
 
     assert invalid_row["payment_id"] == 9002
     assert invalid_row["validation_errors"] == "invalid amount"
+
+
+def test_payment_transaction_rules_are_validated():
+    """
+    tests refund adjustment and unsupported transaction type validation
+    :returns: none
+    """
+    valid_orders = pd.DataFrame([{"order_id": 5001}])
+    invalid_orders = pd.DataFrame(columns=["order_id"])
+    payments = pd.DataFrame(
+        [
+            {
+                "payment_id": 9001,
+                "order_id": 5001,
+                "amount": 25.00,
+                "transaction_type": "refund",
+                "status": "refunded",
+            },
+            {
+                "payment_id": 9002,
+                "order_id": 5001,
+                "amount": -10.00,
+                "transaction_type": "adjustment",
+                "status": "partial",
+            },
+            {
+                "payment_id": 9003,
+                "order_id": 5001,
+                "amount": -5.00,
+                "transaction_type": "refund",
+                "status": "refunded",
+            },
+            {
+                "payment_id": 9004,
+                "order_id": 5001,
+                "amount": 0.00,
+                "transaction_type": "adjustment",
+                "status": "partial",
+            },
+            {
+                "payment_id": 9005,
+                "order_id": 5001,
+                "amount": 10.00,
+                "transaction_type": "unknown",
+                "status": "paid",
+            },
+        ]
+    )
+
+    valid_payments, invalid_payments = separate_invalid_payments(
+        payments,
+        valid_orders,
+        invalid_orders,
+    )
+    errors = dict(
+        zip(
+            invalid_payments["payment_id"],
+            invalid_payments["validation_errors"],
+        )
+    )
+
+    assert valid_payments["payment_id"].tolist() == [9001, 9002]
+    assert errors[9003] == "invalid amount"
+    assert errors[9004] == "invalid amount"
+    assert errors[9005] == "invalid transaction type"
 
 
 def test_missing_required_column_raises_error():

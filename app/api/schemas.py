@@ -40,6 +40,7 @@ class PaymentResponse(BaseModel):
     payment_id: int
     order_id: int
     amount: Decimal
+    transaction_type: str
     status: str
 
 

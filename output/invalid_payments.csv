@@ -1,5 +1,4 @@
-payment_id,order_id,amount,status,validation_errors
-9004,9999,25.0,paid,order not found
-9005,5004,42.99,paid,order failed validation
-9006,5001,-10.0,refunded,invalid amount
-9007,5002,15.0,banana,invalid status
+payment_id,order_id,amount,transaction_type,status,validation_errors
+9004,9999,25.0,payment,paid,order not found
+9005,5004,42.99,payment,paid,order failed validation
+9007,5002,15.0,payment,banana,invalid status

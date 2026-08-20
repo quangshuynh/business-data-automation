@@ -192,6 +192,7 @@ def get_payment_validation_errors(
     valid_order_ids,
     invalid_order_ids,
     allowed_statuses,
+    allowed_transaction_types,
 ):
     """
     returns validation errors for a payment record
@@ -199,12 +200,19 @@ def get_payment_validation_errors(
     :param valid_order_ids: set of valid order ids
     :param invalid_order_ids: set of quarantined order ids
     :param allowed_statuses: set of allowed payment statuses
+    :param allowed_transaction_types: set of allowed financial transaction types
     :returns: semicolon separated string containing validation errors
     """
     errors = []
+    transaction_type = str(row["transaction_type"]).strip().lower()
 
-    if row["amount"] <= 0:
+    if transaction_type in {"payment", "refund"} and row["amount"] <= 0:
         errors.append("invalid amount")
+    elif transaction_type == "adjustment" and row["amount"] == 0:
+        errors.append("invalid amount")
+
+    if transaction_type not in allowed_transaction_types:
+        errors.append("invalid transaction type")
 
     order_id = row["order_id"]
 
@@ -238,12 +246,20 @@ def separate_invalid_payments(payments, valid_orders, invalid_orders, ):
         "pending",
         "refunded",
     }
+    allowed_transaction_types = {
+        "payment",
+        "refund",
+        "adjustment",
+    }
 
     payments = payments.copy()
 
     payments["status"] = ( payments["status"].astype(str).str.strip().str.lower() )
+    payments["transaction_type"] = (
+        payments["transaction_type"].astype(str).str.strip().str.lower()
+    )
 
-    payments["validation_errors"] = payments.apply( get_payment_validation_errors, axis=1, args=(valid_order_ids, invalid_order_ids, allowed_statuses,), )
+    payments["validation_errors"] = payments.apply( get_payment_validation_errors, axis=1, args=(valid_order_ids, invalid_order_ids, allowed_statuses, allowed_transaction_types,), )
 
     invalid_mask = payments["validation_errors"] != ""
 

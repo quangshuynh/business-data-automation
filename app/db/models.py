@@ -47,7 +47,15 @@ class Payment(Base):
 
     __tablename__ = "payments"
     __table_args__ = (
-        CheckConstraint("amount > 0", name="payments_amount_positive"),
+        CheckConstraint(
+            "(transaction_type IN ('payment', 'refund') AND amount > 0) "
+            "OR (transaction_type = 'adjustment' AND amount <> 0)",
+            name="payments_transaction_amount_valid",
+        ),
+        CheckConstraint(
+            "transaction_type IN ('payment', 'refund', 'adjustment')",
+            name="payments_transaction_type_allowed",
+        ),
         CheckConstraint(
             "status IN ('paid', 'partial', 'pending', 'refunded')",
             name="payments_status_allowed",
@@ -60,6 +68,7 @@ class Payment(Base):
         nullable=False,
     )
     amount: Mapped[Decimal] = mapped_column(Numeric(12, 2), nullable=False)
+    transaction_type: Mapped[str] = mapped_column(Text, nullable=False)
     status: Mapped[str] = mapped_column(Text, nullable=False)
 
     order: Mapped[Order] = relationship(back_populates="payments")

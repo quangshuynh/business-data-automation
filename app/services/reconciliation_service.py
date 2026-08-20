@@ -48,11 +48,12 @@ def build_persisted_reconciliation(session):
                 "payment_id": payment.payment_id,
                 "order_id": payment.order_id,
                 "amount": payment.amount,
+                "transaction_type": payment.transaction_type,
                 "status": payment.status,
             }
             for payment in payments
         ],
-        columns=["payment_id", "order_id", "amount", "status"],
+        columns=["payment_id", "order_id", "amount", "transaction_type", "status"],
     )
 
     report = build_report(customer_data, order_data, payment_data)

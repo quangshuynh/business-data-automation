@@ -54,12 +54,14 @@ def csv_pipeline_environment(tmp_path, monkeypatch):
                 "payment_id": 9001,
                 "order_id": 5001,
                 "amount": 100.00,
+                "transaction_type": "payment",
                 "status": "paid",
             },
             {
                 "payment_id": 9002,
                 "order_id": 5002,
                 "amount": 75.00,
+                "transaction_type": "payment",
                 "status": "paid",
             },
         ]

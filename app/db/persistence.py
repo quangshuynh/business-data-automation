@@ -69,6 +69,7 @@ def insert_payments(session, payments):
                 payment_id=record["payment_id"],
                 order_id=record["order_id"],
                 amount=record["amount"],
+                transaction_type=record["transaction_type"],
                 status=record["status"],
             )
         )

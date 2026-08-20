@@ -11,7 +11,7 @@ def calculate_financial_status(order_total, amount_paid):
     order_total = round(order_total, 2)
     amount_paid = round(amount_paid, 2)
 
-    if amount_paid == 0:
+    if amount_paid <= 0:
         return "unpaid"
 
     if amount_paid < order_total:
@@ -21,6 +21,29 @@ def calculate_financial_status(order_total, amount_paid):
         return "paid"
 
     return "overpaid"
+
+
+def calculate_transaction_amount(amount, transaction_type):
+    """
+    calculates the signed financial effect of a payment transaction
+    :param amount: transaction amount from the source record
+    :param transaction_type: payment refund or adjustment transaction type
+    :returns: signed amount used for reconciliation
+    """
+    if transaction_type == "refund":
+        return -amount
+
+    return amount
+
+
+def round_financial_amount(amount):
+    """
+    rounds a financial amount to two decimal places
+    :param amount: financial amount to round
+    :returns: amount rounded to two decimal places
+    """
+    rounded_amount = round(amount, 2)
+    return 0 if rounded_amount == 0 else rounded_amount
 
 
 def get_discrepancy_flags(row, source_paid_order_ids):
@@ -37,6 +60,9 @@ def get_discrepancy_flags(row, source_paid_order_ids):
 
     if row["financial_status"] == "overpaid":
         flags.append("order is overpaid")
+
+    if row["amount_paid"] < 0:
+        flags.append("refunds exceed payments")
 
     if (
         row["order_id"] in source_paid_order_ids
@@ -59,18 +85,35 @@ def build_report(customers, orders, payments):
     """
     report = orders.merge( customers, on="customer_id", how="left" )
 
-    payment_summary = payments.groupby("order_id", as_index=False).agg(
-        amount_paid=("amount", "sum"),
+    payment_transactions = payments.copy()
+    payment_transactions["transaction_amount"] = payment_transactions.apply(
+        lambda row: calculate_transaction_amount(
+            row["amount"],
+            row["transaction_type"],
+        ),
+        axis=1,
+    )
+
+    payment_summary = payment_transactions.groupby("order_id", as_index=False).agg(
+        amount_paid=("transaction_amount", "sum"),
         payment_count=("amount", "size"),
     )
 
     report = report.merge(payment_summary, on="order_id", how="left")
 
-    report["amount_paid"] = report["amount_paid"].fillna(0)
+    report["amount_paid"] = (
+        report["amount_paid"].fillna(0).apply(round_financial_amount)
+    )
     report["payment_count"] = report["payment_count"].fillna(0).astype(int)
-    report["balance_due"] = report["total"] - report["amount_paid"]
-    report["outstanding_balance"] = report["balance_due"].clip(lower=0)
-    report["overpayment_amount"] = (-report["balance_due"]).clip(lower=0)
+    report["balance_due"] = (
+        report["total"] - report["amount_paid"]
+    ).apply(round_financial_amount)
+    report["outstanding_balance"] = (
+        report["balance_due"].clip(lower=0).apply(round_financial_amount)
+    )
+    report["overpayment_amount"] = (
+        (-report["balance_due"]).clip(lower=0).apply(round_financial_amount)
+    )
     report["customer_found"] = report["name"].notna()
 
     report["financial_status"] = report.apply( lambda row: calculate_financial_status(row["total"], row["amount_paid"],), axis=1, )

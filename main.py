@@ -47,7 +47,7 @@ def validate_and_clean_data(customers, orders, payments):
 
     validate_required_columns(
         payments,
-        ["payment_id", "order_id", "amount", "status"],
+        ["payment_id", "order_id", "amount", "transaction_type", "status"],
         "payments",
     )
 

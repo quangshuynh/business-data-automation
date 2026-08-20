@@ -122,4 +122,21 @@ Each reconciled order includes:
 - `discrepancy_flags`
 - a UTC `reconciliation_timestamp`
 
-Current discrepancy flags identify orders with no payments, overpaid orders, and orders where a source payment says paid while the aggregated amount is only unpaid or partial. A last-payment date is intentionally omitted because the current payment input does not contain a transaction date. Refund behavior is also unchanged pending the dedicated transaction-model milestone.
+Current discrepancy flags identify orders with no payments, overpaid orders, refunds that exceed payments, and orders where a source payment says paid while the aggregated amount is only unpaid or partial. A last-payment date is intentionally omitted because the current payment input does not contain a transaction date.
+
+## Payment transaction model
+
+Payment input includes a required `transaction_type` that defines the amount's financial effect independently of the source `status`:
+
+- `payment` requires a positive amount and increases the net paid amount
+- `refund` requires a positive amount and reduces the net paid amount
+- `adjustment` requires a non-zero signed amount and applies that sign directly
+
+Financial reconciliation uses the sum of these signed transaction effects. A full refund therefore returns an order to unpaid, a partial refund reduces it to partial, and an overpayment followed by a sufficient refund can return it to paid. A net amount of zero or less is classified as unpaid.
+
+This milestone adds a required `payments.transaction_type` database column and new check constraints. SQLAlchemy `create_all()` creates the correct structure for new databases but does not migrate an existing table. Existing development databases must be migrated before running the updated pipeline, or recreated when their data is disposable. For Docker development data, recreation is:
+
+```powershell
+docker compose down --volumes
+docker compose up --build
+```

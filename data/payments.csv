@@ -1,8 +1,8 @@
-payment_id,order_id,amount,status
-9001,5001,129.99,paid
-9002,5002,75.50,paid
-9003,5003,100.00,partial
-9004,9999,25.00,paid
-9005,5004,42.99,paid
-9006,5001,-10.00,refunded
-9007,5002,15.00,banana
+payment_id,order_id,amount,transaction_type,status
+9001,5001,129.99,payment,paid
+9002,5002,75.50,payment,paid
+9003,5003,100.00,payment,partial
+9004,9999,25.00,payment,paid
+9005,5004,42.99,payment,paid
+9006,5001,10.00,refund,refunded
+9007,5002,15.00,payment,banana
