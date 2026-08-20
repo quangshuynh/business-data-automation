@@ -1,13 +1,15 @@
-from pathlib import Path
+from datetime import date
 from unittest.mock import MagicMock
 
+import pandas as pd
 import pytest
+from sqlalchemy import create_engine, inspect, select
+from sqlalchemy.orm import Session
 
 from app.db import database
 from app.db.config import get_database_url
-
-
-SCHEMA_PATH = Path(__file__).parents[1] / "app" / "db" / "schema.sql"
+from app.db.models import Base, Customer, Order, Payment
+from app.db.persistence import insert_customers, insert_orders, insert_payments
 
 
 def test_get_database_url_reads_environment_variable(monkeypatch):
@@ -16,7 +18,7 @@ def test_get_database_url_reads_environment_variable(monkeypatch):
     :param monkeypatch: pytest fixture for changing environment variables
     :returns: none
     """
-    database_url = "postgresql://user:password@localhost:5432/business_data"
+    database_url = "postgresql+psycopg://user:password@localhost/business_data"
     monkeypatch.setenv("DATABASE_URL", database_url)
 
     assert get_database_url() == database_url
@@ -37,31 +39,123 @@ def test_get_database_url_requires_environment_variable(monkeypatch):
         get_database_url()
 
 
-def test_schema_defines_tables_and_relationships():
+def test_models_define_tables_and_relationships():
     """
-    tests that the database schema defines required tables and foreign keys
+    tests that models define required tables and foreign keys
     :returns: none
     """
-    schema = SCHEMA_PATH.read_text(encoding="utf-8").lower()
+    assert set(Base.metadata.tables) == {"customers", "orders", "payments"}
 
-    assert "create table if not exists customers" in schema
-    assert "create table if not exists orders" in schema
-    assert "create table if not exists payments" in schema
-    assert "references customers (customer_id)" in schema
-    assert "references orders (order_id)" in schema
+    order_foreign_keys = {key.target_fullname for key in Order.__table__.foreign_keys}
+    payment_foreign_keys = {
+        key.target_fullname for key in Payment.__table__.foreign_keys
+    }
+
+    assert order_foreign_keys == {"customers.customer_id"}
+    assert payment_foreign_keys == {"orders.order_id"}
+    assert Order.__table__.c.total.type.precision == 12
+    assert Order.__table__.c.total.type.scale == 2
 
 
-def test_initialize_database_executes_schema(monkeypatch):
+def test_initialize_database_creates_model_tables():
     """
-    tests that database initialization executes the project schema
-    :param monkeypatch: pytest fixture for replacing the database connection
+    tests that database initialization creates all model tables
     :returns: none
     """
-    connection = MagicMock()
-    cursor = connection.__enter__.return_value.cursor.return_value.__enter__.return_value
-    monkeypatch.setattr(database, "connect_to_database", lambda: connection)
+    engine = create_engine("sqlite:///:memory:")
 
-    database.initialize_database()
+    database.initialize_database(engine)
 
-    expected_schema = SCHEMA_PATH.read_text(encoding="utf-8")
-    cursor.execute.assert_called_once_with(expected_schema)
+    assert set(inspect(engine).get_table_names()) == {
+        "customers",
+        "orders",
+        "payments",
+    }
+
+
+def test_database_session_commits_and_closes():
+    """
+    tests that a successful database session commits and closes
+    :returns: none
+    """
+    session = MagicMock()
+
+    with database.database_session(lambda: session) as active_session:
+        assert active_session is session
+
+    session.commit.assert_called_once_with()
+    session.rollback.assert_not_called()
+    session.close.assert_called_once_with()
+
+
+def test_database_session_rolls_back_on_error():
+    """
+    tests that a failed database session rolls back and closes
+    :returns: none
+    """
+    session = MagicMock()
+
+    with pytest.raises(RuntimeError, match="database failure"):
+        with database.database_session(lambda: session):
+            raise RuntimeError("database failure")
+
+    session.commit.assert_not_called()
+    session.rollback.assert_called_once_with()
+    session.close.assert_called_once_with()
+
+
+def test_persistence_functions_insert_validated_records():
+    """
+    tests that validated dataframes are inserted through the persistence layer
+    :returns: none
+    """
+    engine = create_engine("sqlite:///:memory:")
+    Base.metadata.create_all(engine)
+
+    customers = pd.DataFrame(
+        [
+            {
+                "customer_id": 1001,
+                "name": "John Smith",
+                "email": "john@example.com",
+                "phone": "(585) 555-1234",
+                "email_valid": True,
+                "phone_valid": True,
+            }
+        ]
+    )
+    orders = pd.DataFrame(
+        [
+            {
+                "order_id": 5001,
+                "customer_id": 1001,
+                "date": pd.Timestamp("2026-08-01"),
+                "total": 100.00,
+            }
+        ]
+    )
+    payments = pd.DataFrame(
+        [
+            {
+                "payment_id": 9001,
+                "order_id": 5001,
+                "amount": 100.00,
+                "status": "paid",
+            }
+        ]
+    )
+
+    with Session(engine) as session:
+        assert insert_customers(session, customers) == 1
+        assert insert_orders(session, orders) == 1
+        assert insert_payments(session, payments) == 1
+        session.commit()
+
+        customer = session.scalar(select(Customer))
+        order = session.scalar(select(Order))
+        payment = session.scalar(select(Payment))
+
+        assert customer.email == "john@example.com"
+        assert order.date == date(2026, 8, 1)
+        assert float(order.total) == 100.00
+        assert payment.status == "paid"

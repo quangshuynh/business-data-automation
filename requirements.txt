@@ -1,3 +1,4 @@
 pandas
 psycopg[binary]
 pytest
+SQLAlchemy
