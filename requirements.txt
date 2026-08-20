@@ -1,5 +1,8 @@
+fastapi
+httpx
 pandas
 psycopg[binary]
 python-dotenv
 pytest
 SQLAlchemy
+uvicorn
