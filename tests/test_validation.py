@@ -1,13 +1,13 @@
 import pandas as pd
-
-from app.validators.validate import (
-    separate_invalid_customers,
-    separate_invalid_orders,
-    separate_invalid_payments,
-)
+import pytest
+from app.validators.validate import ( separate_invalid_customers, separate_invalid_orders, separate_invalid_payments, validate_required_columns, validate_unique_ids, )
 
 
 def test_invalid_customer_is_quarantined():
+    """
+    tests that an invalid customer is quarantined
+    :returns: none
+    """
     customers = pd.DataFrame(
         [
             {
@@ -41,6 +41,10 @@ def test_invalid_customer_is_quarantined():
 
 
 def test_invalid_order_total_is_quarantined():
+    """
+    tests that an order with an invalid total is quarantined
+    :returns: none
+    """
     valid_customers = pd.DataFrame(
         [
             {
@@ -86,6 +90,10 @@ def test_invalid_order_total_is_quarantined():
 
 
 def test_order_distinguishes_invalid_customer_from_missing_customer():
+    """
+    tests that orders distinguish invalid customers from missing customers
+    :returns: none
+    """
     valid_customers = pd.DataFrame(
         [
             {
@@ -137,6 +145,10 @@ def test_order_distinguishes_invalid_customer_from_missing_customer():
 
 
 def test_invalid_payment_is_quarantined():
+    """
+    tests that an invalid payment is quarantined
+    :returns: none
+    """
     valid_orders = pd.DataFrame(
         [
             {
@@ -166,11 +178,7 @@ def test_invalid_payment_is_quarantined():
         ]
     )
 
-    valid_payments, invalid_payments = separate_invalid_payments(
-        payments,
-        valid_orders,
-        invalid_orders,
-    )
+    valid_payments, invalid_payments = separate_invalid_payments( payments, valid_orders, invalid_orders, )
 
     assert len(valid_payments) == 1
     assert len(invalid_payments) == 1
@@ -179,3 +187,84 @@ def test_invalid_payment_is_quarantined():
 
     assert invalid_row["payment_id"] == 9002
     assert invalid_row["validation_errors"] == "invalid amount"
+
+
+def test_missing_required_column_raises_error():
+    """
+    tests that a missing required column raises an error
+    :returns: none
+    """
+    customers = pd.DataFrame(
+        [
+            {
+                "customer_id": 1001,
+                "name": "John Smith",
+                "email": "john@example.com",
+            }
+        ]
+    )
+
+    with pytest.raises(ValueError, match="customers is missing required columns",):
+        validate_required_columns(
+            customers, # dataframe
+            ["customer_id", "name", "email", "phone"], # col id
+            "customers", # dataset name
+        )
+
+
+def test_duplicate_ids_raise_error():
+    """
+    tests that duplicate ids raise an error
+    :returns: none
+    """
+    orders = pd.DataFrame(
+        [
+            {
+                "order_id": 5001,
+                "customer_id": 1001,
+                "date": "2026-08-01",
+                "total": 100.00,
+            },
+            {
+                "order_id": 5001,
+                "customer_id": 1002,
+                "date": "2026-08-02",
+                "total": 75.00,
+            },
+        ]
+    )
+
+    with pytest.raises(
+        ValueError,
+        match="orders contains duplicate order_id values",
+    ):
+        validate_unique_ids(
+            orders,
+            "order_id",
+            "orders",
+        )
+
+
+def test_customer_can_have_multiple_validation_errors():
+    """
+    tests that a customer can have multiple validation errors
+    :returns: none
+    """
+    customers = pd.DataFrame(
+        [
+            {
+                "customer_id": 1001,
+                "name": None,
+                "email": "bad-email",
+                "phone": None,
+                "email_valid": False,
+                "phone_valid": False,
+            }
+        ]
+    )
+
+    _, invalid_customers = separate_invalid_customers(customers)
+
+    invalid_row = invalid_customers.iloc[0]
+
+    assert ( invalid_row["validation_errors"] == "missing name; invalid email; invalid phone" )

@@ -3,26 +3,50 @@ import pandas as pd
 
 
 def test_unpaid_order():
+    """
+    tests that an order with no payment is unpaid
+    :returns: none
+    """
     assert calculate_financial_status(100.00, 0.00) == "unpaid"
 
 
 def test_partial_order():
+    """
+    tests that a partially paid order is partial
+    :returns: none
+    """
     assert calculate_financial_status(100.00, 67.00) == "partial"
 
 
 def test_paid_order():
+    """
+    tests that a fully paid order is paid
+    :returns: none
+    """
     assert calculate_financial_status(100.00, 100.00) == "paid"
 
 
 def test_overpaid_order():
+    """
+    tests that an overpaid order is overpaid
+    :returns: none
+    """
     assert calculate_financial_status(100.00, 167.00) == "overpaid"
 
 
 def test_paid_order_handles_float_precision():
+    """
+    tests that a paid order handles float precision
+    :returns: none
+    """
     assert calculate_financial_status(100.00, 99.999999999) == "paid"
 
 
 def test_build_report_calculates_financial_statuses():
+    """
+    tests that the report calculates financial statuses
+    :returns: none
+    """
     customers = pd.DataFrame(
         [
             {
@@ -110,6 +134,10 @@ def test_build_report_calculates_financial_statuses():
 
 
 def test_build_report_aggregates_multiple_payments():
+    """
+    tests that the report aggregates multiple payments
+    :returns: none
+    """
     customers = pd.DataFrame(
         [
             {
