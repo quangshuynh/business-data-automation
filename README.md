@@ -1,142 +1,296 @@
-# business-data-automation
-Python automation tool for validating, reconciling, and reporting business data from CSV and Excel files
+# Business Data Automation
+
+A tested Python data pipeline that validates incoming customer, order, and payment CSV files, quarantines invalid records, reconciles financial balances, persists validated data to PostgreSQL, and exposes results through FastAPI.
+
+The project models a realistic back-office automation problem: business data arrives from multiple files, individual records may be malformed or reference invalid parents, and source payment labels cannot be trusted as the final financial truth.
+
+## What the system does
+
+- Loads customer, order, and payment CSV datasets
+- Treats missing columns and duplicate primary IDs as fatal structural failures
+- Normalizes customer contact information
+- Quarantines invalid business records without stopping valid records
+- Validates customer-to-order and order-to-payment relationships
+- Reconciles payments, refunds, and signed adjustments against order totals
+- Produces paid, partial, unpaid, and overpaid financial statuses
+- Writes reconciliation and quarantine CSV outputs
+- Optionally persists validated records to PostgreSQL through SQLAlchemy
+- Exposes persisted data and reconciliation results through a read-only FastAPI API
+- Runs locally or with Docker Compose
+
+## Architecture
+
+```mermaid
+flowchart LR
+    CSV[Customer, order, and payment CSVs] --> CLI[Batch pipeline]
+    CLI --> Validation[Validation and normalization]
+    Validation -->|invalid records| Quarantine[Quarantine CSVs]
+    Validation -->|valid records| Reconciliation[Reconciliation rules]
+    Reconciliation --> Report[Reconciliation CSV]
+    Validation -->|DATABASE_URL configured| Database[(PostgreSQL)]
+    Database --> Service[Reconciliation service]
+    Service --> Reconciliation
+    Database --> API[FastAPI]
+    Service --> API
+```
+
+Application responsibilities are separated by runtime role:
+
+```text
+app/
+├── api/             HTTP routes, dependencies, and response schemas
+├── db/              SQLAlchemy models, sessions, and persistence
+├── reconciliation/  financial calculations and report construction
+├── services/        database-to-business-logic coordination
+├── validators/      structural and record-level validation
+└── config.py        environment configuration
+
+main.py              CSV batch entry point and pipeline orchestration
+```
+
+The API and batch workflow share the same reconciliation implementation. Database code stays outside `main.py`, while API routes delegate cross-layer reconciliation work to a focused service rather than duplicating calculations.
+
+## Pipeline and validation strategy
+
+```text
+load CSV data
+    ↓
+validate dataset structure
+    ↓
+normalize and validate records
+    ↓
+quarantine invalid records
+    ↓
+persist valid records when configured
+    ↓
+build reconciliation report
+    ↓
+write report and quarantine outputs
+```
+
+Structural failures stop the run because the dataset cannot be interpreted safely:
+
+- Missing required columns
+- Duplicate customer, order, or payment IDs
+
+Record-level failures are quarantined so valid business data can continue:
+
+- Invalid email or phone
+- Missing customer name
+- Malformed order date
+- Invalid order total
+- Invalid transaction amount, type, or source status
+- Missing or quarantined foreign-key parent
+
+Invalid records remain in CSV quarantine files rather than PostgreSQL. This keeps normalized tables limited to validated data while preserving each rejected row and its `validation_errors` explanation.
+
+## Financial reconciliation
+
+The calculated `financial_status` is derived from the order total and net transaction amount. It is never copied from the source payment `status`.
+
+| Net paid amount | Financial status |
+| --- | --- |
+| Zero or less | `unpaid` |
+| Greater than zero but less than the order total | `partial` |
+| Equal to the order total | `paid` |
+| Greater than the order total | `overpaid` |
+
+Each payment record has a required `transaction_type`:
+
+| Transaction type | Amount rule | Reconciliation effect |
+| --- | --- | --- |
+| `payment` | positive | increases net paid |
+| `refund` | positive | decreases net paid |
+| `adjustment` | non-zero and signed | applies its sign directly |
+
+The report includes the net `amount_paid`, signed `balance_due`, non-negative `outstanding_balance`, `overpayment_amount`, `payment_count`, `financial_status`, discrepancy flags, and a UTC reconciliation timestamp.
+
+Current discrepancy flags identify:
+
+- Orders with no payments
+- Overpaid orders
+- Refunds that exceed payments
+- Source payments marked paid when the net amount is unpaid or partial
+
+## Example result
+
+The included sample data contains a completed payment followed by a refund:
+
+```text
+order total:       129.99
+payment:          +129.99
+refund:            -10.00
+net amount paid:   119.99
+outstanding:        10.00
+financial status: partial
+```
+
+The generated files are:
+
+```text
+output/reconciliation_report.csv
+output/invalid_customers.csv
+output/invalid_orders.csv
+output/invalid_payments.csv
+```
+
+## Quick start: CSV workflow
+
+Prerequisites:
+
+- Python 3.14 or a compatible modern Python version
+- PowerShell commands below, or equivalent commands for your shell
+
+Create an environment and install dependencies:
+
+```powershell
+python -m venv .venv
+.\.venv\Scripts\Activate.ps1
+python -m pip install -r requirements.txt
+```
+
+Run the CSV-only pipeline without configuring a database:
+
+```powershell
+python main.py
+```
+
+This validates the files under `data/` and writes results under `output/`.
 
 ## PostgreSQL setup
 
-PostgreSQL is an optional persistence layer for validated pipeline records. The existing CSV reports remain available and do not require a database connection.
+PostgreSQL is optional for the batch workflow and required for API data endpoints.
 
-1. Create a local PostgreSQL database and application user.
-2. Install the project dependencies with `python -m pip install -r requirements.txt`.
-3. Copy the environment template and replace `change_me` with the local database password:
-
-   ```powershell
-   Copy-Item .env.example .env
-   ```
-
-   The application automatically loads `.env`. You can instead set `DATABASE_URL` directly in the shell:
-
-   ```powershell
-   $env:DATABASE_URL = "postgresql+psycopg://business_data_user:your_password@localhost:5432/business_data_automation"
-   ```
-
-4. Run the CSV pipeline with `python main.py`. When `DATABASE_URL` is configured, the pipeline automatically creates missing tables and persists validated records.
-
-   To initialize the tables without running the pipeline, use:
-
-   ```powershell
-   python -c "from app.db.database import initialize_database; initialize_database()"
-   ```
-
-SQLAlchemy models create the `customers`, `orders`, and `payments` tables. The `orders.customer_id` and `payments.order_id` foreign keys preserve the same parent-child relationships enforced by the CSV validation pipeline. The database column `orders.order_date` corresponds to the CSV `date` field.
-
-Database credentials are read only from `DATABASE_URL` and are not stored in source code. The committed `.env.example` contains placeholders only, while `.env` is excluded by `.gitignore`. `DATABASE_URL` must use the `postgresql+psycopg://` format. When it is configured, each pipeline run creates any missing tables and saves valid customers, orders, and payments in one transaction. Existing primary keys are updated instead of inserted again, making repeated runs safe from duplicate-key failures. A database failure is logged and rolled back without preventing the CSV reconciliation and quarantine outputs.
-
-Invalid records remain in the existing quarantine CSV files rather than being stored in PostgreSQL. This keeps the normalized tables limited to validated business data while preserving each rejected row and its `validation_errors` value in the format already used by the pipeline.
-
-## FastAPI interface
-
-The batch workflow remains available through `python main.py`. With `DATABASE_URL` configured, start the API separately with:
-
-```powershell
-uvicorn app.api.api:api --reload
-```
-
-Interactive OpenAPI documentation is available at `http://127.0.0.1:8000/docs`. The initial read-only API provides:
-
-- `GET /health`
-- `GET /customers`
-- `GET /orders`
-- `GET /payments`
-- `GET /reconciliation`
-
-The health endpoint does not require a database connection. Data endpoints return HTTP 503 when database configuration or access is unavailable. Reconciliation results are calculated through the existing reconciliation module rather than duplicated in the API.
-
-## Project structure
-
-Application responsibilities are separated by their actual runtime roles:
-
-- `app/api` contains HTTP routes, dependencies, and response schemas
-- `app/db` contains SQLAlchemy models, sessions, and persistence
-- `app/reconciliation` contains financial reconciliation rules
-- `app/services` coordinates database records with reusable business logic
-- `app/validators` contains structural and record-level validation
-- `app/config.py` contains environment configuration
-- `main.py` remains the CSV batch entry point
-
-The API routes remain thin: persisted reconciliation adaptation lives in `app/services/reconciliation_service.py`, while the underlying calculations remain in `app/reconciliation/reconcile.py`. No repository interfaces or additional class hierarchy are used because the current application does not require them.
-
-## Docker setup
-
-Docker Compose runs the FastAPI application and PostgreSQL together while keeping PostgreSQL data in a named volume.
-
-1. Create the local environment file and replace every `change_me` value:
+1. Create a PostgreSQL database and application user.
+2. Copy the environment template:
 
    ```powershell
    Copy-Item .env.example .env
    ```
 
-2. Build and start the services:
+3. Replace the placeholder credentials in `.env`. The connection must use the Psycopg SQLAlchemy dialect:
 
-   ```powershell
-   docker compose up --build
+   ```text
+   DATABASE_URL=postgresql+psycopg://business_data_user:your_password@localhost:5432/business_data_automation
    ```
 
-3. Open the API documentation at `http://localhost:8000/docs`.
+4. Run the pipeline:
 
-The application container waits for PostgreSQL to pass its health check, initializes missing SQLAlchemy tables, and then starts Uvicorn. PostgreSQL data persists in the `postgres_data` volume.
+   ```powershell
+   python main.py
+   ```
 
-To load the sample CSV data into PostgreSQL and regenerate the mounted output files while the database is running:
+When configured, the pipeline creates missing tables and persists valid customers, orders, and transactions in one database transaction. Existing primary keys are merged, making repeated imports safe from duplicate-key failures. Database failures roll back and are logged without preventing CSV report generation.
 
-```powershell
-docker compose run --rm app python main.py
-```
-
-Stop the services with:
+To initialize empty tables without processing CSV files:
 
 ```powershell
-docker compose down
+python -c "from app.db.database import initialize_database; initialize_database()"
 ```
 
-Use `docker compose down --volumes` only when the local PostgreSQL data should also be deleted. Local non-Docker development remains supported through the PostgreSQL, CLI, and Uvicorn commands documented above.
+Secrets are read from `DATABASE_URL`; `.env` is ignored by Git and `.env.example` contains placeholders only.
 
-## Testing
+### Existing database migration note
 
-Run the full suite with:
+The payment transaction model requires `payments.transaction_type` and associated check constraints. SQLAlchemy `create_all()` creates the correct schema for new databases but does not alter an existing table. Existing databases must be migrated or recreated when their data is disposable.
 
-```powershell
-python -m pytest
-```
-
-The suite covers structural validation, record quarantine, reconciliation edge cases, SQLAlchemy models and constraints, idempotent persistence, transaction handling, API endpoints and expected errors, and the complete CSV-to-output pipeline. Database and API integration tests use isolated in-memory databases, so the standard suite does not require PostgreSQL or Docker.
-
-## Reconciliation report
-
-The report derives `financial_status` from the order total and the sum of valid payment amounts. It does not trust the source payment status as the calculated result.
-
-Each reconciled order includes:
-
-- `amount_paid` and the original signed `balance_due`
-- non-negative `outstanding_balance` and `overpayment_amount`
-- `payment_count`
-- `financial_status` with unpaid, partial, paid, or overpaid values
-- `discrepancy_flags`
-- a UTC `reconciliation_timestamp`
-
-Current discrepancy flags identify orders with no payments, overpaid orders, refunds that exceed payments, and orders where a source payment says paid while the aggregated amount is only unpaid or partial. A last-payment date is intentionally omitted because the current payment input does not contain a transaction date.
-
-## Payment transaction model
-
-Payment input includes a required `transaction_type` that defines the amount's financial effect independently of the source `status`:
-
-- `payment` requires a positive amount and increases the net paid amount
-- `refund` requires a positive amount and reduces the net paid amount
-- `adjustment` requires a non-zero signed amount and applies that sign directly
-
-Financial reconciliation uses the sum of these signed transaction effects. A full refund therefore returns an order to unpaid, a partial refund reduces it to partial, and an overpayment followed by a sufficient refund can return it to paid. A net amount of zero or less is classified as unpaid.
-
-This milestone adds a required `payments.transaction_type` database column and new check constraints. SQLAlchemy `create_all()` creates the correct structure for new databases but does not migrate an existing table. Existing development databases must be migrated before running the updated pipeline, or recreated when their data is disposable. For Docker development data, recreation is:
+For disposable Docker development data:
 
 ```powershell
 docker compose down --volumes
 docker compose up --build
 ```
+
+## FastAPI
+
+With `DATABASE_URL` configured, start the API:
+
+```powershell
+uvicorn app.api.api:api --reload
+```
+
+Interactive OpenAPI documentation is available at `http://127.0.0.1:8000/docs`.
+
+| Method | Endpoint | Purpose |
+| --- | --- | --- |
+| GET | `/health` | application health check |
+| GET | `/customers` | list persisted customers |
+| GET | `/orders` | list persisted orders |
+| GET | `/payments` | list persisted financial transactions |
+| GET | `/reconciliation` | calculate reconciliation from persisted data |
+
+The health endpoint does not require PostgreSQL. Database-backed endpoints return HTTP 503 when configuration or database access is unavailable.
+
+## Docker
+
+Docker Compose starts PostgreSQL and FastAPI, waits for the database health check, initializes missing tables, and stores PostgreSQL data in a named volume.
+
+```powershell
+Copy-Item .env.example .env
+docker compose up --build
+```
+
+Open `http://localhost:8000/docs` after startup.
+
+Load the sample CSV data and regenerate the mounted output files:
+
+```powershell
+docker compose run --rm app python main.py
+```
+
+Stop containers while preserving database data:
+
+```powershell
+docker compose down
+```
+
+Local Python development remains supported without Docker.
+
+## Testing
+
+Run the complete suite:
+
+```powershell
+python -m pytest
+```
+
+Current result:
+
+```text
+41 passed
+```
+
+The suite covers:
+
+- Dataset and record validation
+- Quarantine behavior and validation messages
+- Payment, refund, and adjustment reconciliation
+- Full, partial, and overpayment edge cases
+- SQLAlchemy models and database constraints
+- Transaction rollback and idempotent persistence
+- FastAPI endpoints and expected failures
+- Complete CSV-to-output pipeline integration
+
+Database and API integration tests use isolated in-memory databases, so PostgreSQL and Docker are not required to run the standard suite.
+
+## Engineering decisions
+
+- Structural errors fail fast; isolated record errors are quarantined
+- Financial truth comes from transaction amounts, not source status labels
+- Refunds are positive source amounts with a negative reconciliation effect
+- Valid records are persisted transactionally; invalid records remain explainable CSV artifacts
+- PostgreSQL persistence is optional so the original batch workflow stays useful
+- ORM, API, validation, reconciliation, and orchestration responsibilities remain separate
+- The design avoids repository interfaces, dependency-injection frameworks, and class hierarchies that the current complexity does not justify
+
+## Current limitations and future improvements
+
+- Payments do not yet include transaction dates, so last-payment-date reporting is unavailable
+- Schema changes currently require manual migration or database recreation; Alembic would be the next database maturity step
+- The API is read-only and has no authentication
+- Docker configuration should be runtime-verified on a machine with Docker available
+- A small dashboard could visualize reconciliation totals and discrepancy alerts after the backend workflow is finalized
+
+## Portfolio summary
+
+Automated business-data validation and reconciliation pipeline that cleans incoming CSV data, quarantines invalid records, reconciles payments and refunds against orders, persists validated data to PostgreSQL, and exposes tested reporting through FastAPI and Docker.
