@@ -85,10 +85,13 @@ def persist_valid_data(customers, orders, payments, engine=None):
     :param engine: optional SQLAlchemy database engine
     :returns: dictionary containing persisted record counts
     """
-    database_engine = engine or create_database_engine()
+    database_engine = engine
     owns_engine = engine is None
 
     try:
+        if database_engine is None:
+            database_engine = create_database_engine()
+
         initialize_database(database_engine)
         session_factory = create_session_factory(database_engine)
 
@@ -100,10 +103,10 @@ def persist_valid_data(customers, orders, payments, engine=None):
             }
 
         return counts
-    except SQLAlchemyError as error:
+    except (SQLAlchemyError, ValueError) as error:
         raise DatabasePersistenceError(
             "validated records could not be persisted"
         ) from error
     finally:
-        if owns_engine:
+        if owns_engine and database_engine is not None:
             database_engine.dispose()

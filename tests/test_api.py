@@ -85,20 +85,24 @@ def test_health_check(api_client):
     :returns: none
     """
     response = api_client.get("/health")
+    readiness_response = api_client.get("/ready")
 
     assert response.status_code == 200
     assert response.json() == {"status": "ok"}
+    assert readiness_response.status_code == 200
+    assert readiness_response.json() == {"status": "ready"}
 
 
 def test_dashboard_assets_are_served(api_client):
     """
-    tests that the dashboard page and stylesheet are served by FastAPI
+    tests that the dashboard page stylesheet and script are served by FastAPI
     :param api_client: FastAPI client backed by a test database
     :returns: none
     """
     root_response = api_client.get("/", follow_redirects=False)
     dashboard_response = api_client.get("/dashboard/")
     stylesheet_response = api_client.get("/dashboard/styles.css")
+    script_response = api_client.get("/dashboard/app.js")
 
     assert root_response.status_code == 307
     assert root_response.headers["location"] == "/dashboard/"
@@ -106,6 +110,8 @@ def test_dashboard_assets_are_served(api_client):
     assert "Reconciliation Control Room" in dashboard_response.text
     assert stylesheet_response.status_code == 200
     assert "text/css" in stylesheet_response.headers["content-type"]
+    assert script_response.status_code == 200
+    assert "/reconciliation" in script_response.text
 
 
 def test_list_business_records(api_client):
@@ -146,17 +152,19 @@ def test_reconciliation_uses_persisted_records(api_client):
     assert results[5002]["discrepancy_flags"] == "order has no payments"
 
 
-def test_data_endpoint_handles_missing_database_configuration(monkeypatch):
+@pytest.mark.parametrize("path", ["/customers", "/ready"])
+def test_database_endpoint_handles_missing_database_configuration(monkeypatch, path):
     """
-    tests that data endpoints report unavailable database configuration
+    tests that database endpoints report unavailable database configuration
     :param monkeypatch: pytest fixture for changing environment variables
+    :param path: database-backed API path to request
     :returns: none
     """
     monkeypatch.delenv("DATABASE_URL", raising=False)
     get_api_engine.cache_clear()
 
     with TestClient(api) as client:
-        response = client.get("/customers")
+        response = client.get(path)
 
     assert response.status_code == 503
     assert response.json() == {"detail": "database is not available"}

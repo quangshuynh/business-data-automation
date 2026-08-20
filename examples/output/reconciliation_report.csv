@@ -1,0 +1,4 @@
+order_id,customer_id,date,total,name,email,phone,amount_paid,payment_count,balance_due,outstanding_balance,overpayment_amount,customer_found,financial_status,discrepancy_flags,reconciliation_timestamp
+5001,1001,2026-08-01,129.99,John Smith,john@example.com,(585) 555-1234,119.99,2,10.00,10.00,0.00,True,partial,source status says paid but amount is partial,2026-08-20 00:00:00+00:00
+5002,1002,2026-08-02,75.50,Jane Doe,jane@example.com,(585) 555-2222,75.50,1,0.00,0.00,0.00,True,paid,,2026-08-20 00:00:00+00:00
+5003,1001,2026-08-03,210.00,John Smith,john@example.com,(585) 555-1234,100.00,1,110.00,110.00,0.00,True,partial,,2026-08-20 00:00:00+00:00

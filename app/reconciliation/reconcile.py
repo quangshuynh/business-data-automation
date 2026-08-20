@@ -1,4 +1,7 @@
 from datetime import datetime, timezone
+from decimal import ROUND_HALF_UP, Decimal
+
+CENT = Decimal("0.01")
 
 
 def calculate_financial_status(order_total, amount_paid):
@@ -8,8 +11,8 @@ def calculate_financial_status(order_total, amount_paid):
     :param amount_paid: total amount paid toward the order
     :returns: calculated financial status
     """
-    order_total = round(order_total, 2)
-    amount_paid = round(amount_paid, 2)
+    order_total = round_financial_amount(order_total)
+    amount_paid = round_financial_amount(amount_paid)
 
     if amount_paid <= 0:
         return "unpaid"
@@ -30,10 +33,12 @@ def calculate_transaction_amount(amount, transaction_type):
     :param transaction_type: payment refund or adjustment transaction type
     :returns: signed amount used for reconciliation
     """
-    if transaction_type == "refund":
-        return -amount
+    normalized_amount = round_financial_amount(amount)
 
-    return amount
+    if transaction_type == "refund":
+        return -normalized_amount
+
+    return normalized_amount
 
 
 def round_financial_amount(amount):
@@ -42,8 +47,8 @@ def round_financial_amount(amount):
     :param amount: financial amount to round
     :returns: amount rounded to two decimal places
     """
-    rounded_amount = round(amount, 2)
-    return 0 if rounded_amount == 0 else rounded_amount
+    rounded_amount = Decimal(str(amount)).quantize(CENT, rounding=ROUND_HALF_UP)
+    return Decimal("0.00") if rounded_amount == 0 else rounded_amount
 
 
 def get_discrepancy_flags(row, source_paid_order_ids):
@@ -62,15 +67,13 @@ def get_discrepancy_flags(row, source_paid_order_ids):
         flags.append("order is overpaid")
 
     if row["amount_paid"] < 0:
-        flags.append("refunds exceed payments")
+        flags.append("net transaction amount is negative")
 
-    if (
-        row["order_id"] in source_paid_order_ids
-        and row["financial_status"] in {"unpaid", "partial"}
-    ):
-        flags.append(
-            f"source status says paid but amount is {row['financial_status']}"
-        )
+    if row["order_id"] in source_paid_order_ids and row["financial_status"] in {
+        "unpaid",
+        "partial",
+    }:
+        flags.append(f"source status says paid but amount is {row['financial_status']}")
 
     return "; ".join(flags)
 
@@ -83,9 +86,32 @@ def build_report(customers, orders, payments):
     :param payments: dataframe containing payment information
     :returns: a dataframe containing the completed reconciliation report
     """
-    report = orders.merge( customers, on="customer_id", how="left" )
+    order_columns = [
+        column
+        for column in ["order_id", "customer_id", "date", "total"]
+        if column in orders.columns
+    ]
+    customer_columns = [
+        column
+        for column in ["customer_id", "name", "email", "phone"]
+        if column in customers.columns
+    ]
+    payment_columns = [
+        "payment_id",
+        "order_id",
+        "amount",
+        "transaction_type",
+        "status",
+    ]
 
-    payment_transactions = payments.copy()
+    report = orders[order_columns].merge(
+        customers[customer_columns],
+        on="customer_id",
+        how="left",
+    )
+    report["total"] = report["total"].apply(round_financial_amount)
+
+    payment_transactions = payments[payment_columns].copy()
     payment_transactions["transaction_amount"] = payment_transactions.apply(
         lambda row: calculate_transaction_amount(
             row["amount"],
@@ -105,9 +131,9 @@ def build_report(customers, orders, payments):
         report["amount_paid"].fillna(0).apply(round_financial_amount)
     )
     report["payment_count"] = report["payment_count"].fillna(0).astype(int)
-    report["balance_due"] = (
-        report["total"] - report["amount_paid"]
-    ).apply(round_financial_amount)
+    report["balance_due"] = (report["total"] - report["amount_paid"]).apply(
+        round_financial_amount
+    )
     report["outstanding_balance"] = (
         report["balance_due"].clip(lower=0).apply(round_financial_amount)
     )
@@ -116,7 +142,13 @@ def build_report(customers, orders, payments):
     )
     report["customer_found"] = report["name"].notna()
 
-    report["financial_status"] = report.apply( lambda row: calculate_financial_status(row["total"], row["amount_paid"],), axis=1, )
+    report["financial_status"] = report.apply(
+        lambda row: calculate_financial_status(
+            row["total"],
+            row["amount_paid"],
+        ),
+        axis=1,
+    )
 
     source_paid_order_ids = set(
         payments.loc[

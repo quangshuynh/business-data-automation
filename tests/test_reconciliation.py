@@ -1,6 +1,7 @@
-from app.reconciliation.reconcile import calculate_financial_status, build_report
 import pandas as pd
 import pytest
+
+from app.reconciliation.reconcile import build_report, calculate_financial_status
 
 
 def test_unpaid_order():
@@ -217,12 +218,8 @@ def test_build_report_handles_an_empty_payment_dataset():
     tests that a report with no payment records marks orders as unpaid
     :returns: none
     """
-    customers = pd.DataFrame(
-        [{"customer_id": 1001, "name": "John Smith"}]
-    )
-    orders = pd.DataFrame(
-        [{"order_id": 5001, "customer_id": 1001, "total": 100.00}]
-    )
+    customers = pd.DataFrame([{"customer_id": 1001, "name": "John Smith"}])
+    orders = pd.DataFrame([{"order_id": 5001, "customer_id": 1001, "total": 100.00}])
     payments = pd.DataFrame(
         columns=["payment_id", "order_id", "amount", "transaction_type", "status"]
     )
@@ -239,12 +236,8 @@ def test_build_report_does_not_derive_status_from_source_status():
     tests that financial status is based on amounts rather than source status
     :returns: none
     """
-    customers = pd.DataFrame(
-        [{"customer_id": 1001, "name": "John Smith"}]
-    )
-    orders = pd.DataFrame(
-        [{"order_id": 5001, "customer_id": 1001, "total": 100.00}]
-    )
+    customers = pd.DataFrame([{"customer_id": 1001, "name": "John Smith"}])
+    orders = pd.DataFrame([{"order_id": 5001, "customer_id": 1001, "total": 100.00}])
     payments = pd.DataFrame(
         [
             {
@@ -268,12 +261,8 @@ def test_build_report_flags_paid_source_with_partial_amount():
     tests that a paid source status with a partial amount is flagged
     :returns: none
     """
-    customers = pd.DataFrame(
-        [{"customer_id": 1001, "name": "John Smith"}]
-    )
-    orders = pd.DataFrame(
-        [{"order_id": 5001, "customer_id": 1001, "total": 100.00}]
-    )
+    customers = pd.DataFrame([{"customer_id": 1001, "name": "John Smith"}])
+    orders = pd.DataFrame([{"order_id": 5001, "customer_id": 1001, "total": 100.00}])
     payments = pd.DataFrame(
         [
             {
@@ -317,12 +306,8 @@ def test_build_report_applies_refunds(
     :param expected_status: expected calculated financial status
     :returns: none
     """
-    customers = pd.DataFrame(
-        [{"customer_id": 1001, "name": "John Smith"}]
-    )
-    orders = pd.DataFrame(
-        [{"order_id": 5001, "customer_id": 1001, "total": 100.00}]
-    )
+    customers = pd.DataFrame([{"customer_id": 1001, "name": "John Smith"}])
+    orders = pd.DataFrame([{"order_id": 5001, "customer_id": 1001, "total": 100.00}])
     payments = pd.DataFrame(
         [
             {
@@ -347,12 +332,8 @@ def test_build_report_applies_signed_adjustments():
     tests that adjustment transactions use their signed source amount
     :returns: none
     """
-    customers = pd.DataFrame(
-        [{"customer_id": 1001, "name": "John Smith"}]
-    )
-    orders = pd.DataFrame(
-        [{"order_id": 5001, "customer_id": 1001, "total": 100.00}]
-    )
+    customers = pd.DataFrame([{"customer_id": 1001, "name": "John Smith"}])
+    orders = pd.DataFrame([{"order_id": 5001, "customer_id": 1001, "total": 100.00}])
     payments = pd.DataFrame(
         [
             {
@@ -376,3 +357,28 @@ def test_build_report_applies_signed_adjustments():
 
     assert report.iloc[0]["amount_paid"] == 90.00
     assert report.iloc[0]["financial_status"] == "partial"
+
+
+def test_build_report_flags_negative_net_transaction_amount():
+    """
+    tests that a negative net transaction amount receives an accurate flag
+    :returns: none
+    """
+    customers = pd.DataFrame([{"customer_id": 1001, "name": "John Smith"}])
+    orders = pd.DataFrame([{"order_id": 5001, "customer_id": 1001, "total": 100.00}])
+    payments = pd.DataFrame(
+        [
+            {
+                "payment_id": 9001,
+                "order_id": 5001,
+                "amount": -10.00,
+                "transaction_type": "adjustment",
+                "status": "partial",
+            }
+        ]
+    )
+
+    report = build_report(customers, orders, payments)
+
+    assert report.iloc[0]["financial_status"] == "unpaid"
+    assert report.iloc[0]["discrepancy_flags"] == "net transaction amount is negative"

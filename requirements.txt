@@ -1,9 +1,7 @@
-fastapi
-httpx
-httpx2
-pandas
-psycopg[binary]
-python-dotenv
-pytest
-SQLAlchemy
-uvicorn
+fastapi==0.141.1
+pandas==3.0.5
+psycopg[binary]==3.3.4
+pydantic==2.13.4
+python-dotenv==1.2.3
+SQLAlchemy==2.0.52
+uvicorn==0.52.4

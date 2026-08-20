@@ -1,16 +1,31 @@
-from pathlib import Path
-import pandas as pd
 import logging
+from pathlib import Path
+
+import pandas as pd
+
 from app.config import is_database_configured
 from app.db.persistence import DatabasePersistenceError, persist_valid_data
 from app.reconciliation.reconcile import build_report
-from app.validators.validate import (is_valid_email, normalize_email, normalize_phone, validate_required_columns, validate_unique_ids, separate_invalid_customers, separate_invalid_orders, separate_invalid_payments)
+from app.validators.validate import (
+    is_valid_email,
+    normalize_email,
+    normalize_name,
+    normalize_phone,
+    separate_invalid_customers,
+    separate_invalid_orders,
+    separate_invalid_payments,
+    validate_required_columns,
+    validate_unique_ids,
+)
 
+PROJECT_ROOT = Path(__file__).resolve().parent
+DATA_DIR = PROJECT_ROOT / "data"
+OUTPUT_DIR = PROJECT_ROOT / "output"
 
-DATA_DIR = Path("data") #src/data
-OUTPUT_DIR = Path("output") #src/output
-
-logging.basicConfig( level=logging.INFO, format="%(asctime)s | %(levelname)s | %(message)s", )
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(asctime)s | %(levelname)s | %(message)s",
+)
 logger = logging.getLogger(__name__)
 
 
@@ -34,9 +49,9 @@ def validate_and_clean_data(customers, orders, payments):
     :returns: a tuple containing the validated and cleaned dataframes
     """
     validate_required_columns(
-        customers, #dataframe
-        ["customer_id", "name", "email", "phone"], #col id
-        "customers", # dataset name
+        customers,  # dataframe
+        ["customer_id", "name", "email", "phone"],  # col id
+        "customers",  # dataset name
     )
 
     validate_required_columns(
@@ -69,6 +84,7 @@ def validate_and_clean_data(customers, orders, payments):
         "payments",
     )
 
+    customers["name"] = customers["name"].apply(normalize_name)
     customers["email"] = customers["email"].apply(normalize_email)
     customers["phone"] = customers["phone"].apply(normalize_phone)
     customers["email_valid"] = customers["email"].apply(is_valid_email)
@@ -76,16 +92,27 @@ def validate_and_clean_data(customers, orders, payments):
 
     # separate valid and invalid info
     valid_customers, invalid_customers = separate_invalid_customers(customers)
-    valid_orders, invalid_orders = separate_invalid_orders(orders, valid_customers, invalid_customers)
-    valid_payments, invalid_payments = separate_invalid_payments(payments, valid_orders, invalid_orders)
+    valid_orders, invalid_orders = separate_invalid_orders(
+        orders, valid_customers, invalid_customers
+    )
+    valid_payments, invalid_payments = separate_invalid_payments(
+        payments, valid_orders, invalid_orders
+    )
 
-    return valid_customers, invalid_customers, valid_orders, invalid_orders, valid_payments, invalid_payments
+    return (
+        valid_customers,
+        invalid_customers,
+        valid_orders,
+        invalid_orders,
+        valid_payments,
+        invalid_payments,
+    )
 
 
 def main():
     """
     runs the reconciliation process and generates the output report
-    :returns: none
+    :returns: process status code
     """
     OUTPUT_DIR.mkdir(exist_ok=True)
 
@@ -176,11 +203,16 @@ def main():
         )
 
         logger.info("report generated at %s", output_path)
+        return 0
 
     except ValueError as error:
         logger.error("validation failed: %s", error)
+        return 1
+    except (OSError, pd.errors.ParserError) as error:
+        logger.error("file processing failed: %s", error)
+        return 1
 
 
-#main guard
+# main guard
 if __name__ == "__main__":
-    main()
+    raise SystemExit(main())

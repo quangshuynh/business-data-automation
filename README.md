@@ -1,13 +1,16 @@
 # Business Data Automation
 
-A tested Python data pipeline that validates incoming customer, order, and payment CSV files, quarantines invalid records, reconciles financial balances, persists validated data to PostgreSQL, and exposes results through FastAPI.
+A tested Python data pipeline that validates incoming customer, order, and payment CSV files, quarantines invalid records, reconciles financial balances, can persist validated data to PostgreSQL, and exposes results through FastAPI.
 
 The project models a realistic back-office automation problem: business data arrives from multiple files, individual records may be malformed or reference invalid parents, and source payment labels cannot be trusted as the final financial truth.
+
+[Portfolio narrative, resume bullets, and interview guide](docs/PORTFOLIO.md)
 
 ## What the system does
 
 - Loads customer, order, and payment CSV datasets
 - Treats missing columns and duplicate primary IDs as fatal structural failures
+- Validates positive whole-number IDs and exact-cent financial amounts
 - Normalizes customer contact information
 - Quarantines invalid business records without stopping valid records
 - Validates customer-to-order and order-to-payment relationships
@@ -84,7 +87,7 @@ Record-level failures are quarantined so valid business data can continue:
 - Invalid transaction amount, type, or source status
 - Missing or quarantined foreign-key parent
 
-Invalid records remain in CSV quarantine files rather than PostgreSQL. This keeps normalized tables limited to validated data while preserving each rejected row and its `validation_errors` explanation.
+Invalid records remain in CSV quarantine files rather than PostgreSQL. Each rejected record is emitted in its normalized form with a `validation_errors` explanation, while validated records continue through the pipeline.
 
 ## Financial reconciliation
 
@@ -111,7 +114,7 @@ Current discrepancy flags identify:
 
 - Orders with no payments
 - Overpaid orders
-- Refunds that exceed payments
+- Negative net transaction amounts
 - Source payments marked paid when the net amount is unpaid or partial
 
 ## Example result
@@ -127,7 +130,7 @@ outstanding:        10.00
 financial status: partial
 ```
 
-The generated files are:
+Runtime-generated files are written under `output/`:
 
 ```text
 output/reconciliation_report.csv
@@ -135,6 +138,8 @@ output/invalid_customers.csv
 output/invalid_orders.csv
 output/invalid_payments.csv
 ```
+
+The runtime directory is ignored by Git because the reconciliation timestamp changes on every run. Stable examples from the included input data are committed under [`examples/output`](examples/output).
 
 ## Quick start: CSV workflow
 
@@ -184,6 +189,8 @@ PostgreSQL is optional for the batch workflow and required for API data endpoint
 
 When configured, the pipeline creates missing tables and persists valid customers, orders, and transactions in one database transaction. Existing primary keys are merged, making repeated imports safe from duplicate-key failures. Database failures roll back and are logged without preventing CSV report generation.
 
+Persistence uses incremental primary-key upserts. It does not treat each import as a complete snapshot, so records absent from a later input file are not automatically deleted.
+
 To initialize empty tables without processing CSV files:
 
 ```powershell
@@ -215,13 +222,16 @@ Interactive OpenAPI documentation is available at `http://127.0.0.1:8000/docs`.
 
 | Method | Endpoint | Purpose |
 | --- | --- | --- |
-| GET | `/health` | application health check |
+| GET | `/health` | application liveness check |
+| GET | `/ready` | database readiness check |
 | GET | `/customers` | list persisted customers |
 | GET | `/orders` | list persisted orders |
 | GET | `/payments` | list persisted financial transactions |
 | GET | `/reconciliation` | calculate reconciliation from persisted data |
 
-The health endpoint does not require PostgreSQL. Database-backed endpoints return HTTP 503 when configuration or database access is unavailable.
+The liveness endpoint does not require PostgreSQL. The readiness and data endpoints return HTTP 503 when configuration or database access is unavailable.
+
+The API returns customer contact data and has no authentication. Treat it as a local demonstration service until authentication and authorization are added.
 
 ## Dashboard
 
@@ -240,7 +250,7 @@ The dashboard is plain HTML, CSS, and JavaScript served by the backend. This kee
 
 ## Docker
 
-Docker Compose starts PostgreSQL and FastAPI, waits for the database health check, initializes missing tables, and stores PostgreSQL data in a named volume.
+Docker Compose starts PostgreSQL and FastAPI, waits for the database health check, initializes missing tables, and stores PostgreSQL data in a named volume. Required database variables fail fast when they are absent.
 
 ```powershell
 Copy-Item .env.example .env
@@ -248,6 +258,8 @@ docker compose up --build
 ```
 
 Open `http://localhost:8000/docs` after startup.
+
+Open `http://localhost:8000/dashboard/` for the dashboard.
 
 Load the sample CSV data and regenerate the mounted output files:
 
@@ -265,6 +277,12 @@ Local Python development remains supported without Docker.
 
 ## Testing
 
+Install the development dependencies once:
+
+```powershell
+python -m pip install -r requirements-dev.txt
+```
+
 Run the complete suite:
 
 ```powershell
@@ -274,7 +292,7 @@ python -m pytest
 Current result:
 
 ```text
-41 passed
+52 passed
 ```
 
 The suite covers:
@@ -284,17 +302,20 @@ The suite covers:
 - Payment, refund, and adjustment reconciliation
 - Full, partial, and overpayment edge cases
 - SQLAlchemy models and database constraints
-- Transaction rollback and idempotent persistence
+- Transaction rollback and primary-key upsert behavior
 - FastAPI endpoints and expected failures
 - Complete CSV-to-output pipeline integration
 
-Database and API integration tests use isolated in-memory databases, so PostgreSQL and Docker are not required to run the standard suite.
+Database and API integration tests use isolated in-memory SQLite databases, so PostgreSQL and Docker are not required to run the standard suite. A live PostgreSQL/Compose smoke test remains a deliberate next step.
+
+Ruff formatting, Ruff linting, and pytest run in [GitHub Actions](.github/workflows/ci.yml) on every push and pull request.
 
 ## Engineering decisions
 
 - Structural errors fail fast; isolated record errors are quarantined
 - Financial truth comes from transaction amounts, not source status labels
 - Refunds are positive source amounts with a negative reconciliation effect
+- Financial values are validated and reconciled with `Decimal` values at cent precision
 - Valid records are persisted transactionally; invalid records remain explainable CSV artifacts
 - PostgreSQL persistence is optional so the original batch workflow stays useful
 - ORM, API, validation, reconciliation, and orchestration responsibilities remain separate
@@ -304,10 +325,13 @@ Database and API integration tests use isolated in-memory databases, so PostgreS
 
 - Payments do not yet include transaction dates, so last-payment-date reporting is unavailable
 - Schema changes currently require manual migration or database recreation; Alembic would be the next database maturity step
-- The API is read-only and has no authentication
+- The read-only API has no authentication, pagination, or authorization and is intended for local demonstration
+- API reconciliation currently loads complete tables into Pandas and is best suited to small datasets
+- Persistence performs upserts rather than full snapshot synchronization or import history
+- Standard tests use SQLite; live PostgreSQL, Docker runtime, and browser behavior are not yet tested in CI
 - Docker configuration should be runtime-verified on a machine with Docker available
 - Dashboard summaries currently use a fixed USD display currency
 
 ## Portfolio summary
 
-Automated business-data validation and reconciliation pipeline that cleans incoming CSV data, quarantines invalid records, reconciles payments and refunds against orders, persists validated data to PostgreSQL, and exposes tested reporting through FastAPI and Docker.
+Automated business-data validation and reconciliation pipeline that cleans related CSV data, emits explainable quarantine records, reconciles payments, refunds, and adjustments at cent precision, optionally upserts validated data to PostgreSQL, and exposes reporting through FastAPI and a responsive dashboard.

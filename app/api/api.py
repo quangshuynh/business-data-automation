@@ -18,7 +18,6 @@ from app.api.schemas import (
 from app.db.models import Customer, Order, Payment
 from app.services.reconciliation_service import build_persisted_reconciliation
 
-
 api = FastAPI(
     title="Business Data Automation API",
     version="1.0.0",
@@ -44,6 +43,17 @@ def health_check():
     :returns: dictionary containing the application health status
     """
     return {"status": "ok"}
+
+
+@api.get("/ready", response_model=HealthResponse)
+def readiness_check(session: DatabaseSession):
+    """
+    checks whether the application can reach its database
+    :param session: SQLAlchemy database session
+    :returns: dictionary containing the database readiness status
+    """
+    session.execute(select(1))
+    return {"status": "ready"}
 
 
 @api.get("/customers", response_model=list[CustomerResponse])

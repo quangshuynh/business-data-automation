@@ -26,9 +26,7 @@ class Order(Base):
     """database model for a validated order"""
 
     __tablename__ = "orders"
-    __table_args__ = (
-        CheckConstraint("total > 0", name="orders_total_positive"),
-    )
+    __table_args__ = (CheckConstraint("total > 0", name="orders_total_positive"),)
 
     order_id: Mapped[int] = mapped_column(BigInteger, primary_key=True)
     customer_id: Mapped[int] = mapped_column(

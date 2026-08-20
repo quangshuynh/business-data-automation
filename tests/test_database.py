@@ -7,10 +7,10 @@ from sqlalchemy import create_engine, inspect, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
-from app.db import database
 from app.config import get_database_url, is_database_configured
+from app.db import database, persistence
 from app.db.models import Base, Customer, Order, Payment
-from app.db.persistence import persist_valid_data
+from app.db.persistence import DatabasePersistenceError, persist_valid_data
 
 
 def test_get_database_url_reads_environment_variable(monkeypatch):
@@ -249,3 +249,49 @@ def test_database_rejects_invalid_payment_data(
 
         with pytest.raises(IntegrityError):
             session.commit()
+
+
+def test_database_enforces_foreign_keys_when_enabled():
+    """
+    tests that the relational schema rejects an order with no customer parent
+    :returns: none
+    """
+    engine = create_engine("sqlite:///:memory:")
+
+    with engine.connect() as connection:
+        connection.exec_driver_sql("PRAGMA foreign_keys=ON")
+
+    Base.metadata.create_all(engine)
+
+    with Session(engine) as session:
+        session.add(
+            Order(
+                order_id=5001,
+                customer_id=9999,
+                date=date(2026, 8, 1),
+                total=100.00,
+            )
+        )
+
+        with pytest.raises(IntegrityError):
+            session.commit()
+
+
+def test_persistence_wraps_database_configuration_errors(monkeypatch):
+    """
+    tests that database configuration failures use the persistence error contract
+    :param monkeypatch: pytest fixture for replacing engine creation
+    :returns: none
+    """
+    monkeypatch.setattr(
+        persistence,
+        "create_database_engine",
+        MagicMock(side_effect=ValueError("invalid database url")),
+    )
+    empty_frame = pd.DataFrame()
+
+    with pytest.raises(
+        DatabasePersistenceError,
+        match="validated records could not be persisted",
+    ):
+        persist_valid_data(empty_frame, empty_frame, empty_frame)

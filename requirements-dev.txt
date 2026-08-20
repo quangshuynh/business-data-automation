@@ -1,0 +1,6 @@
+-r requirements.txt
+
+# Starlette 1.6 TestClient dependency
+httpx2==2.12.0
+pytest==9.1.1
+ruff==0.16.4

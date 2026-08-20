@@ -1,6 +1,13 @@
 import pandas as pd
 import pytest
-from app.validators.validate import ( separate_invalid_customers, separate_invalid_orders, separate_invalid_payments, validate_required_columns, validate_unique_ids, )
+
+from app.validators.validate import (
+    separate_invalid_customers,
+    separate_invalid_orders,
+    separate_invalid_payments,
+    validate_required_columns,
+    validate_unique_ids,
+)
 
 
 def test_invalid_customer_is_quarantined():
@@ -53,9 +60,7 @@ def test_invalid_order_total_is_quarantined():
         ]
     )
 
-    invalid_customers = pd.DataFrame(
-        columns=["customer_id"]
-    )
+    invalid_customers = pd.DataFrame(columns=["customer_id"])
 
     orders = pd.DataFrame(
         [
@@ -157,9 +162,7 @@ def test_invalid_payment_is_quarantined():
         ]
     )
 
-    invalid_orders = pd.DataFrame(
-        columns=["order_id"]
-    )
+    invalid_orders = pd.DataFrame(columns=["order_id"])
 
     payments = pd.DataFrame(
         [
@@ -180,7 +183,11 @@ def test_invalid_payment_is_quarantined():
         ]
     )
 
-    valid_payments, invalid_payments = separate_invalid_payments( payments, valid_orders, invalid_orders, )
+    valid_payments, invalid_payments = separate_invalid_payments(
+        payments,
+        valid_orders,
+        invalid_orders,
+    )
 
     assert len(valid_payments) == 1
     assert len(invalid_payments) == 1
@@ -271,11 +278,14 @@ def test_missing_required_column_raises_error():
         ]
     )
 
-    with pytest.raises(ValueError, match="customers is missing required columns",):
+    with pytest.raises(
+        ValueError,
+        match="customers is missing required columns",
+    ):
         validate_required_columns(
-            customers, # dataframe
-            ["customer_id", "name", "email", "phone"], # col id
-            "customers", # dataset name
+            customers,  # dataframe
+            ["customer_id", "name", "email", "phone"],  # col id
+            "customers",  # dataset name
         )
 
 
@@ -334,4 +344,140 @@ def test_customer_can_have_multiple_validation_errors():
 
     invalid_row = invalid_customers.iloc[0]
 
-    assert ( invalid_row["validation_errors"] == "missing name; invalid email; invalid phone" )
+    assert (
+        invalid_row["validation_errors"] == "missing name; invalid email; invalid phone"
+    )
+
+
+def test_malformed_customer_id_is_quarantined():
+    """
+    tests that a malformed customer identifier is quarantined
+    :returns: none
+    """
+    customers = pd.DataFrame(
+        [
+            {
+                "customer_id": "not-an-id",
+                "name": "John Smith",
+                "email": "john@example.com",
+                "phone": "(585) 555-1234",
+                "email_valid": True,
+                "phone_valid": True,
+            }
+        ]
+    )
+
+    valid_customers, invalid_customers = separate_invalid_customers(customers)
+
+    assert valid_customers.empty
+    assert invalid_customers.iloc[0]["validation_errors"] == "invalid customer id"
+
+
+def test_malformed_order_values_are_quarantined():
+    """
+    tests that malformed order identifiers and totals are quarantined
+    :returns: none
+    """
+    valid_customers = pd.DataFrame([{"customer_id": 1001}])
+    invalid_customers = pd.DataFrame(columns=["customer_id"])
+    orders = pd.DataFrame(
+        [
+            {
+                "order_id": "not-an-id",
+                "customer_id": 1001,
+                "date": "2026-08-01",
+                "total": 100.00,
+            },
+            {
+                "order_id": 5002,
+                "customer_id": 1001,
+                "date": "2026-08-01",
+                "total": "not-an-amount",
+            },
+            {
+                "order_id": 5003,
+                "customer_id": 1001,
+                "date": "2026-08-01",
+                "total": "10.001",
+            },
+            {
+                "order_id": 5004,
+                "customer_id": 1001,
+                "date": "2026-08-01",
+                "total": "10000000000.00",
+            },
+        ]
+    )
+
+    valid_orders, invalid_orders = separate_invalid_orders(
+        orders,
+        valid_customers,
+        invalid_customers,
+    )
+
+    assert valid_orders.empty
+    assert invalid_orders.iloc[0]["validation_errors"] == "invalid order id"
+    assert invalid_orders.iloc[1]["validation_errors"] == "invalid total"
+    assert invalid_orders.iloc[2]["validation_errors"] == "invalid total"
+    assert invalid_orders.iloc[3]["validation_errors"] == "invalid total"
+
+
+def test_malformed_payment_values_are_quarantined():
+    """
+    tests that malformed payment identifiers and amounts are quarantined
+    :returns: none
+    """
+    valid_orders = pd.DataFrame([{"order_id": 5001}])
+    invalid_orders = pd.DataFrame(columns=["order_id"])
+    payments = pd.DataFrame(
+        [
+            {
+                "payment_id": "not-an-id",
+                "order_id": 5001,
+                "amount": 10.00,
+                "transaction_type": "payment",
+                "status": "paid",
+            },
+            {
+                "payment_id": 9002,
+                "order_id": "not-an-id",
+                "amount": 10.00,
+                "transaction_type": "payment",
+                "status": "paid",
+            },
+            {
+                "payment_id": 9003,
+                "order_id": 5001,
+                "amount": "not-an-amount",
+                "transaction_type": "payment",
+                "status": "paid",
+            },
+            {
+                "payment_id": 9004,
+                "order_id": 5001,
+                "amount": "10.001",
+                "transaction_type": "payment",
+                "status": "paid",
+            },
+            {
+                "payment_id": 9005,
+                "order_id": 5001,
+                "amount": "10000000000.00",
+                "transaction_type": "payment",
+                "status": "paid",
+            },
+        ]
+    )
+
+    valid_payments, invalid_payments = separate_invalid_payments(
+        payments,
+        valid_orders,
+        invalid_orders,
+    )
+
+    assert valid_payments.empty
+    assert invalid_payments.iloc[0]["validation_errors"] == "invalid payment id"
+    assert invalid_payments.iloc[1]["validation_errors"] == "invalid order id"
+    assert invalid_payments.iloc[2]["validation_errors"] == "invalid amount"
+    assert invalid_payments.iloc[3]["validation_errors"] == "invalid amount"
+    assert invalid_payments.iloc[4]["validation_errors"] == "invalid amount"

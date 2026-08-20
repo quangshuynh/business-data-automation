@@ -8,3 +8,6 @@ __pycache__/
 
 .coverage
 htmlcov/
+
+output/*
+!output/.gitkeep
