@@ -1,4 +1,4 @@
-from main import calculate_financial_status, build_report
+from app.reconciliation.reconcile import calculate_financial_status, build_report
 import pandas as pd
 
 
