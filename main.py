@@ -1,7 +1,7 @@
 from pathlib import Path
 import pandas as pd
 import logging
-from app.db.config import is_database_configured
+from app.config import is_database_configured
 from app.db.persistence import DatabasePersistenceError, persist_valid_data
 from app.reconciliation.reconcile import build_report
 from app.validators.validate import (is_valid_email, normalize_email, normalize_phone, validate_required_columns, validate_unique_ids, separate_invalid_customers, separate_invalid_orders, separate_invalid_payments)

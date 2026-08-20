@@ -7,7 +7,7 @@ from sqlalchemy import create_engine, inspect, select
 from sqlalchemy.orm import Session
 
 from app.db import database
-from app.db.config import get_database_url, is_database_configured
+from app.config import get_database_url, is_database_configured
 from app.db.models import Base, Customer, Order, Payment
 from app.db.persistence import persist_valid_data
 
@@ -35,6 +35,21 @@ def test_get_database_url_requires_environment_variable(monkeypatch):
     with pytest.raises(
         ValueError,
         match="DATABASE_URL environment variable is required",
+    ):
+        get_database_url()
+
+
+def test_get_database_url_rejects_invalid_connection_format(monkeypatch):
+    """
+    tests that database configuration requires the Psycopg connection format
+    :param monkeypatch: pytest fixture for changing environment variables
+    :returns: none
+    """
+    monkeypatch.setenv("DATABASE_URL", "mysql://user:password@localhost/database")
+
+    with pytest.raises(
+        ValueError,
+        match="DATABASE_URL must use the postgresql\\+psycopg:// connection format",
     ):
         get_database_url()
 

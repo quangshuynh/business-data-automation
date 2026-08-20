@@ -3,8 +3,8 @@ from contextlib import contextmanager
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 
+from app.config import get_database_url
 from app.db.models import Base
-from app.db.config import get_database_url
 
 
 def create_database_engine(database_url=None):
