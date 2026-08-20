@@ -1,10 +1,20 @@
 # Business Data Automation
 
-A tested Python data pipeline that validates incoming customer, order, and payment CSV files, quarantines invalid records, reconciles financial balances, can persist validated data to PostgreSQL, and exposes results through FastAPI.
-
-The project models a realistic back-office automation problem: business data arrives from multiple files, individual records may be malformed or reference invalid parents, and source payment labels cannot be trusted as the final financial truth.
+A tested Python data pipeline that validates incoming customer, order, and
+payment CSV files, quarantines invalid records, reconciles financial balances,
+can persist validated data to PostgreSQL, and exposes results through FastAPI.
 
 [Portfolio narrative, resume bullets, and interview guide](docs/PORTFOLIO.md)
+
+<p align="center">
+  <img src="./docs/images/dashboard.png"
+       alt="Business Data Automation reconciliation dashboard"
+       width="900">
+</p>
+
+<p align="center">
+  <em>Reconciliation dashboard showing financial status, balances, and flagged discrepancies</em>
+</p>
 
 ## What the system does
 
@@ -145,7 +155,7 @@ The runtime directory is ignored by Git because the reconciliation timestamp cha
 
 Prerequisites:
 
-- Python 3.14 or a compatible modern Python version
+- Python 3.14
 - PowerShell commands below, or equivalent commands for your shell
 
 Create an environment and install dependencies:
@@ -235,7 +245,8 @@ The API returns customer contact data and has no authentication. Treat it as a l
 
 ## Dashboard
 
-FastAPI serves a lightweight dashboard at `http://127.0.0.1:8000/dashboard/`, and the application root redirects there. The dashboard uses the existing reconciliation endpoint and adds no duplicate financial calculations.
+FastAPI serves a lightweight dashboard at `http://127.0.0.1:8000/dashboard/`,
+and the application root redirects there.
 
 Dashboard features include:
 
@@ -246,7 +257,8 @@ Dashboard features include:
 - Financial-status and flagged-order filters
 - Discrepancy messages and connection-error handling
 
-The dashboard is plain HTML, CSS, and JavaScript served by the backend. This keeps the demonstration easy to run without adding a separate Node.js toolchain.
+The dashboard is plain HTML, CSS, and JavaScript served by the backend. This
+keeps the demonstration easy to run without adding a separate Node.js toolchain.
 
 ## Docker
 
@@ -329,7 +341,7 @@ Ruff formatting, Ruff linting, and pytest run in [GitHub Actions](.github/workfl
 - API reconciliation currently loads complete tables into Pandas and is best suited to small datasets
 - Persistence performs upserts rather than full snapshot synchronization or import history
 - Standard tests use SQLite; live PostgreSQL, Docker runtime, and browser behavior are not yet tested in CI
-- Docker configuration should be runtime-verified on a machine with Docker available
+- Docker runtime is verified locally, but full Docker and live PostgreSQL integration are not yet exercised in CI
 - Dashboard summaries currently use a fixed USD display currency
 
 ## Portfolio summary
