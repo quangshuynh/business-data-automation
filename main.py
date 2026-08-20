@@ -1,10 +1,14 @@
 from pathlib import Path
 import pandas as pd
+import logging
 from app.validators.validate import (is_valid_email, normalize_email, normalize_phone, validate_required_columns, validate_unique_ids, separate_invalid_customers, separate_invalid_orders, separate_invalid_payments)
 
 
 DATA_DIR = Path("data") #src/data
 OUTPUT_DIR = Path("output") #src/output
+
+logging.basicConfig( level=logging.INFO, format="%(asctime)s | %(levelname)s | %(message)s", )
+logger = logging.getLogger(__name__)
 
 
 def load_data():
@@ -121,59 +125,81 @@ def validate_and_clean_data(customers, orders, payments):
 
 def main():
     """
-    runs the reconciliation process and generate the output report
-    :returns: None
+    runs the reconciliation process and generates the output report
+    :returns: none
     """
     OUTPUT_DIR.mkdir(exist_ok=True)
 
-    customers, orders, payments = load_data() # load
-    valid_customers, invalid_customers, valid_orders, invalid_orders, valid_payments, invalid_payments = validate_and_clean_data(customers, orders, payments) # validate and clean
-    
-    report = build_report(valid_customers, valid_orders, valid_payments) # build report
+    try:
+        logger.info("loading input data")
 
-    output_path = OUTPUT_DIR / "reconciliation_report.csv" #output file
-    report.to_csv(output_path, index=False)
+        customers, orders, payments = load_data()
 
-    invalid_customers_path = OUTPUT_DIR / "invalid_customers.csv"
-    invalid_customers.to_csv(invalid_customers_path, index=False)
+        logger.info("validating and cleaning data")
 
-    invalid_orders_path = OUTPUT_DIR / "invalid_orders.csv"
-    invalid_orders.to_csv(invalid_orders_path, index=False)
+        (
+            valid_customers,
+            invalid_customers,
+            valid_orders,
+            invalid_orders,
+            valid_payments,
+            invalid_payments,
+        ) = validate_and_clean_data(
+            customers,
+            orders,
+            payments,
+        )
 
-    invalid_payments_path = OUTPUT_DIR / "invalid_payments.csv"
-    invalid_payments.to_csv(invalid_payments_path, index=False)
+        logger.info("building reconciliation report")
 
-    print(f"Customers processed: {len(customers)}")
-    print(f"Valid customers: {len(valid_customers)}")
-    print(f"Invalid customers: {len(invalid_customers)}")
-    print(f"Valid orders: {len(valid_orders)}")
-    print(f"Invalid orders: {len(invalid_orders)}")
-    print(f"Valid payments: {len(valid_payments)}")
-    print(f"Invalid payments: {len(invalid_payments)}")
-    print(
-        f"Orders with missing customers: "
-        f"{(~report['customer_found']).sum()}"
-    )
-    print(
-        f"Unpaid orders: "
-        f"{(report['financial_status'] == 'unpaid').sum()}"
-    )
-    print(
-        f"Partial orders: "
-        f"{(report['financial_status'] == 'partial').sum()}"
-    )
-    print(
-        f"Paid orders: "
-        f"{(report['financial_status'] == 'paid').sum()}"
-    )
-    print(
-        f"Overpaid orders: "
-        f"{(report['financial_status'] == 'overpaid').sum()}"
-    )
-    print(f"Report generated: {output_path}")
-    print(f"Invalid customer records: {invalid_customers_path}")
-    print(f"Invalid order records: {invalid_orders_path}")
-    print(f"Invalid payment records: {invalid_payments_path}")
+        report = build_report(
+            valid_customers,
+            valid_orders,
+            valid_payments,
+        )
+
+        output_path = OUTPUT_DIR / "reconciliation_report.csv"
+        report.to_csv(output_path, index=False)
+
+        invalid_customers_path = OUTPUT_DIR / "invalid_customers.csv"
+        invalid_customers.to_csv(invalid_customers_path, index=False)
+
+        invalid_orders_path = OUTPUT_DIR / "invalid_orders.csv"
+        invalid_orders.to_csv(invalid_orders_path, index=False)
+
+        invalid_payments_path = OUTPUT_DIR / "invalid_payments.csv"
+        invalid_payments.to_csv(invalid_payments_path, index=False)
+
+        logger.info(
+            "processing complete: %s valid customers, %s invalid customers",
+            len(valid_customers),
+            len(invalid_customers),
+        )
+
+        logger.info(
+            "orders: %s valid, %s invalid",
+            len(valid_orders),
+            len(invalid_orders),
+        )
+
+        logger.info(
+            "payments: %s valid, %s invalid",
+            len(valid_payments),
+            len(invalid_payments),
+        )
+
+        logger.info(
+            "financial statuses: %s unpaid, %s partial, %s paid, %s overpaid",
+            (report["financial_status"] == "unpaid").sum(),
+            (report["financial_status"] == "partial").sum(),
+            (report["financial_status"] == "paid").sum(),
+            (report["financial_status"] == "overpaid").sum(),
+        )
+
+        logger.info("report generated at %s", output_path)
+
+    except ValueError as error:
+        logger.error("validation failed: %s", error)
 
 
 #main guard
