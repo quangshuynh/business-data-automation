@@ -1,6 +1,9 @@
+from pathlib import Path
 from typing import Annotated
 
 from fastapi import Depends, FastAPI
+from fastapi.responses import RedirectResponse
+from fastapi.staticfiles import StaticFiles
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
@@ -22,6 +25,16 @@ api = FastAPI(
 )
 
 DatabaseSession = Annotated[Session, Depends(get_database_session)]
+DASHBOARD_DIR = Path(__file__).parents[1] / "dashboard"
+
+
+@api.get("/", include_in_schema=False)
+def dashboard_redirect():
+    """
+    redirects the application root to the dashboard
+    :returns: redirect response for the dashboard
+    """
+    return RedirectResponse(url="/dashboard/")
 
 
 @api.get("/health", response_model=HealthResponse)
@@ -74,3 +87,10 @@ def list_reconciliation_results(session: DatabaseSession):
     :returns: list of reconciled orders ordered by order id
     """
     return build_persisted_reconciliation(session)
+
+
+api.mount(
+    "/dashboard",
+    StaticFiles(directory=DASHBOARD_DIR, html=True),
+    name="dashboard",
+)

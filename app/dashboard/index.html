@@ -1,0 +1,100 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="description" content="Business data reconciliation dashboard">
+  <title>Reconciliation Control Room</title>
+  <link rel="stylesheet" href="/dashboard/styles.css">
+</head>
+<body>
+  <main class="shell">
+    <header class="hero">
+      <div>
+        <p class="eyebrow">Business Data Automation</p>
+        <h1>Reconciliation Control Room</h1>
+        <p class="subtitle">A live view of persisted orders, payment coverage, and discrepancies.</p>
+      </div>
+      <div class="hero-actions">
+        <span id="connectionStatus" class="connection" aria-live="polite">Connecting</span>
+        <button id="refreshButton" class="refresh" type="button">Refresh data</button>
+      </div>
+    </header>
+
+    <section class="summary-grid" aria-label="Reconciliation summary">
+      <article class="summary-card accent">
+        <span>Total orders</span>
+        <strong id="totalOrders">—</strong>
+      </article>
+      <article class="summary-card">
+        <span>Amount reconciled</span>
+        <strong id="amountPaid">—</strong>
+      </article>
+      <article class="summary-card warning">
+        <span>Outstanding</span>
+        <strong id="outstandingBalance">—</strong>
+      </article>
+      <article class="summary-card danger">
+        <span>Flagged orders</span>
+        <strong id="flaggedOrders">—</strong>
+      </article>
+    </section>
+
+    <section class="status-panel" aria-label="Financial status counts">
+      <div class="status-stat"><span class="dot unpaid"></span><strong id="unpaidCount">0</strong><span>Unpaid</span></div>
+      <div class="status-stat"><span class="dot partial"></span><strong id="partialCount">0</strong><span>Partial</span></div>
+      <div class="status-stat"><span class="dot paid"></span><strong id="paidCount">0</strong><span>Paid</span></div>
+      <div class="status-stat"><span class="dot overpaid"></span><strong id="overpaidCount">0</strong><span>Overpaid</span></div>
+    </section>
+
+    <section class="report-panel">
+      <div class="panel-heading">
+        <div>
+          <p class="eyebrow">Order ledger</p>
+          <h2>Reconciliation results</h2>
+        </div>
+        <div class="filters">
+          <label>
+            <span class="sr-only">Search orders or customers</span>
+            <input id="searchInput" type="search" placeholder="Search order or customer">
+          </label>
+          <label>
+            <span class="sr-only">Filter by financial status</span>
+            <select id="statusFilter">
+              <option value="all">All statuses</option>
+              <option value="unpaid">Unpaid</option>
+              <option value="partial">Partial</option>
+              <option value="paid">Paid</option>
+              <option value="overpaid">Overpaid</option>
+              <option value="flagged">Flagged only</option>
+            </select>
+          </label>
+        </div>
+      </div>
+
+      <div id="errorMessage" class="message error-message" hidden></div>
+      <div id="emptyMessage" class="message" hidden>No reconciliation records match this view.</div>
+
+      <div class="table-wrap">
+        <table>
+          <thead>
+            <tr>
+              <th>Order</th>
+              <th>Customer</th>
+              <th>Total</th>
+              <th>Net paid</th>
+              <th>Outstanding</th>
+              <th>Transactions</th>
+              <th>Status</th>
+              <th>Discrepancy</th>
+            </tr>
+          </thead>
+          <tbody id="reportRows"></tbody>
+        </table>
+      </div>
+      <p id="lastUpdated" class="last-updated">Waiting for data</p>
+    </section>
+  </main>
+  <script src="/dashboard/app.js" defer></script>
+</body>
+</html>

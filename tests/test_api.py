@@ -90,6 +90,24 @@ def test_health_check(api_client):
     assert response.json() == {"status": "ok"}
 
 
+def test_dashboard_assets_are_served(api_client):
+    """
+    tests that the dashboard page and stylesheet are served by FastAPI
+    :param api_client: FastAPI client backed by a test database
+    :returns: none
+    """
+    root_response = api_client.get("/", follow_redirects=False)
+    dashboard_response = api_client.get("/dashboard/")
+    stylesheet_response = api_client.get("/dashboard/styles.css")
+
+    assert root_response.status_code == 307
+    assert root_response.headers["location"] == "/dashboard/"
+    assert dashboard_response.status_code == 200
+    assert "Reconciliation Control Room" in dashboard_response.text
+    assert stylesheet_response.status_code == 200
+    assert "text/css" in stylesheet_response.headers["content-type"]
+
+
 def test_list_business_records(api_client):
     """
     tests that customer order and payment endpoints return stored records

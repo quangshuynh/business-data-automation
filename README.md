@@ -16,6 +16,7 @@ The project models a realistic back-office automation problem: business data arr
 - Writes reconciliation and quarantine CSV outputs
 - Optionally persists validated records to PostgreSQL through SQLAlchemy
 - Exposes persisted data and reconciliation results through a read-only FastAPI API
+- Serves a responsive reconciliation dashboard from the FastAPI application
 - Runs locally or with Docker Compose
 
 ## Architecture
@@ -32,6 +33,7 @@ flowchart LR
     Service --> Reconciliation
     Database --> API[FastAPI]
     Service --> API
+    API --> Dashboard[Reconciliation dashboard]
 ```
 
 Application responsibilities are separated by runtime role:
@@ -221,6 +223,21 @@ Interactive OpenAPI documentation is available at `http://127.0.0.1:8000/docs`.
 
 The health endpoint does not require PostgreSQL. Database-backed endpoints return HTTP 503 when configuration or database access is unavailable.
 
+## Dashboard
+
+FastAPI serves a lightweight dashboard at `http://127.0.0.1:8000/dashboard/`, and the application root redirects there. The dashboard uses the existing reconciliation endpoint and adds no duplicate financial calculations.
+
+Dashboard features include:
+
+- Total orders, net amount paid, outstanding balance, and flagged-order summaries
+- Paid, partial, unpaid, and overpaid counts
+- Responsive reconciliation table
+- Order and customer search
+- Financial-status and flagged-order filters
+- Discrepancy messages and connection-error handling
+
+The dashboard is plain HTML, CSS, and JavaScript served by the backend. This keeps the demonstration easy to run without adding a separate Node.js toolchain.
+
 ## Docker
 
 Docker Compose starts PostgreSQL and FastAPI, waits for the database health check, initializes missing tables, and stores PostgreSQL data in a named volume.
@@ -289,7 +306,7 @@ Database and API integration tests use isolated in-memory databases, so PostgreS
 - Schema changes currently require manual migration or database recreation; Alembic would be the next database maturity step
 - The API is read-only and has no authentication
 - Docker configuration should be runtime-verified on a machine with Docker available
-- A small dashboard could visualize reconciliation totals and discrepancy alerts after the backend workflow is finalized
+- Dashboard summaries currently use a fixed USD display currency
 
 ## Portfolio summary
 
