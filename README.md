@@ -1,5 +1,16 @@
 # Business Data Automation
 
+<p align="center">
+  <a href="https://github.com/quangshuynh/business-data-automation/actions">
+    <img src="https://github.com/quangshuynh/business-data-automation/actions/workflows/ci.yml/badge.svg" alt="CI">
+  </a>
+  <a href="https://github.com/quangshuynh/business-data-automation/releases">
+    <img src="https://img.shields.io/github/v/release/quangshuynh/business-data-automation" alt="Release">
+  </a>
+  <img src="https://img.shields.io/badge/tests-52%20passing-brightgreen" alt="Tests: 52 passing">
+  <img src="https://img.shields.io/badge/python-3.11%2B-blue" alt="Python 3.11+">
+</p>
+
 A tested Python data pipeline that validates incoming customer, order, and
 payment CSV files, quarantines invalid records, reconciles financial balances,
 can persist validated data to PostgreSQL, and exposes results through FastAPI.
