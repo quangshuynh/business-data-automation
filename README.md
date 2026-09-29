@@ -1,3 +1,7 @@
+<p align="center">
+  <img src="docs/images/business-data-automation-logo.png" alt="Business Data Automation icon" width="256">
+</p>
+
 # Business Data Automation
 
 <p align="center">
