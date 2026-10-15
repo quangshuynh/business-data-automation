@@ -1,0 +1,7 @@
+Name,Created at,Customer ID,Email,Financial Status,Currency,Total,Shipping Method
+#2008,2026-09-01 08:00:00 -0400,7000101,avery.quinn@example.com,paid,USD,80.00,Standard
+#2008,2026-09-01 08:00:00 -0400,7000101,avery.quinn@example.com,paid,USD,85.00,Standard
+#2009,2026-09-03 08:00:00 -0400,7000101,avery.quinn@example.com,paid,EUR,70.00,Standard
+#2010,2026-09-05 08:00:00 -0400,7000107,harper.ives@example.com,paid,USD,"1,300.00",Freight
+#2011,2026-09-06 08:00:00 -0400,ABC-17,gray.h@example.com,paid,USD,30.00,Standard
+#2012,2026-09-07,7000101,avery.quinn@example.com,paid,USD,15.00,Standard

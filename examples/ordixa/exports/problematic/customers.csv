@@ -1,0 +1,9 @@
+Customer ID,First Name,Last Name,Email,Phone,Accepts Email Marketing,Tags
+7000101,Avery,Quinn,avery.quinn@example.com,555-010-0101,yes,
+7000102,Blake,Moreno,blake.moreno@,555-010-0102,no,email typo
+7000103,Casey,Lindqvist,casey.l@example.org,,yes,no phone on file
+7000104,,,devon.okafor@example.com,555-010-0104,no,name missing
+ABC-17,Gray,Holloway,gray.h@example.com,555-010-0117,no,malformed id
+7000106,Finley,Ashdown,finley.ashdown@example.net,555-010-0106,no,
+7000106,Finley,Ashdown,finley.ashdown@example.net,555-010-0106,no,
+7000107,Harper,Ives,harper.ives@example.com,+44 20 7946 0107,yes,international phone

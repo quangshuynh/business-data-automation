@@ -1,0 +1,7 @@
+Transaction ID,Order Reference,Date,Type,Status,Amount,Currency,Card Brand,Notes
+PMT-260901,#1002,09/04/2026,Payment,Partially Paid,$500.00,USD,Mastercard,second installment
+PMT-260902,#1006,09/02/2026,Payment,Partially Paid,$330.00,USD,Visa,
+PMT-260903,#1006,09/03/2026,Adjustment,Paid,$12.25,USD,,store credit applied
+PMT-260904,#1007,09/09/2026,Payment,Paid,$58.40,USD,Discover,
+PMT-260905,#1007,09/12/2026,Refund,Refunded,-$8.40,USD,Discover,partial return
+PMT-260906,#1008,09/15/2026,Payment,Paid,"$1,999.99",USD,Visa,

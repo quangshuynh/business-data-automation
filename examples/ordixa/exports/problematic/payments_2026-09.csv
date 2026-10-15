@@ -1,0 +1,12 @@
+Transaction ID,Order Reference,Date,Type,Status,Amount,Currency,Card Brand,Notes
+PMT-270009,#2001,09/01/2026,Refund,Refunded,$5.00,USD,Visa,refund exported unsigned
+PMT-270010,#2001,09/02/2026,Payment,Failed,$100.00,USD,Visa,card declined
+,#2002,09/03/2026,Payment,Paid,$10.00,USD,Visa,missing transaction id
+PMT-270011,#2002,13/45/2026,Payment,Partially Paid,$25.00,USD,Visa,corrupt date
+PMT-270012,#2010,09/05/2026,Payment,Paid,"$1,350.00",USD,Visa,
+PMT-270013,#2010,09/06/2026,Payment,Paid,$10.00,USD,Visa,
+PMT-270013,#2010,09/06/2026,Payment,Paid,$20.00,USD,Visa,conflicting duplicate
+PMT-270014,#2003,09/07/2026,Payment,Paid,$5.00,EUR,Visa,foreign currency
+PMT-270015,#2012,09/08/2026,Adjustment,Paid,($3.00),USD,,fee correction
+PMT-270016,#2011,09/09/2026,Payment,Paid,$30.00,USD,Visa,
+PMT-270017,#2001,09/10/2026,Payment,Pending,$0.00,USD,Visa,zero authorization
