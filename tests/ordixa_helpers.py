@@ -14,6 +14,7 @@ from app.ordixa.profile import validate_profile_document
 ROOT = Path(__file__).resolve().parents[1]
 EXPORTS_DIR = ROOT / "examples" / "ordixa" / "exports"
 PROFILE_PATH = ROOT / "examples" / "ordixa" / "profiles" / "harbor-lane.toml"
+TEXT_ID_PROFILE_PATH = ROOT / "examples" / "ordixa" / "profiles" / "juniper-row.toml"
 
 
 def profile_document():

@@ -1,0 +1,55 @@
+# Ordixa import profile for the fictional Juniper Row Ceramics exports.
+# Every identifier is opaque text: letters, separators, and leading zeros are
+# significant (ORD-2026-00142, PAY_8F3K2, customer 00012345). See docs/ORDIXA.md.
+schema_version = 1
+
+[profile]
+name = "juniper-row"
+version = "1.0.0"
+description = "Fictional text-identifier exports (example data)"
+
+[input]
+formats = ["csv", "xlsx"]
+
+[amounts]
+currency = "USD"
+currency_symbols = ["$"]
+
+[identifiers]
+customer_id = "text"
+order_id = "text"
+payment_id = "text"
+
+[datasets.customers]
+required = false
+files = ["customers*.csv", "customers*.xlsx"]
+
+[datasets.customers.columns]
+customer_id = "Customer Number"
+name = "Full Name"
+email = "Email"
+phone = "Phone"
+
+[datasets.orders]
+files = ["orders*.csv", "orders*.xlsx"]
+date_formats = ["%Y-%m-%d"]
+
+[datasets.orders.columns]
+order_id = "Order Number"
+customer_id = "Customer Number"
+date = "Order Date"
+total = "Grand Total"
+currency = "Currency"
+
+[datasets.payments]
+files = ["payments*.csv", "payments*.xlsx"]
+date_formats = ["%Y-%m-%d"]
+
+[datasets.payments.columns]
+payment_id = "Payment Ref"
+order_id = "Order Number"
+payment_date = "Paid On"
+amount = "Gross"
+transaction_type = "Kind"
+status = "State"
+currency = "Currency"

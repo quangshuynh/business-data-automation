@@ -21,7 +21,8 @@ exports/
 │   ├── orders_2026-09.csv     September reporting period
 │   ├── payments_2026-08.csv
 │   └── payments_2026-09.csv
-└── problematic/    the same structure, seeded with deliberate defects
+├── problematic/    the same structure, seeded with deliberate defects
+└── text-ids/       "Juniper Row Ceramics": opaque text identifiers
 ```
 
 Orders and payments share an order reference (`#1001`). Ordixa does not match
@@ -81,3 +82,24 @@ same run, because its second installment arrives in September.
 | payments | blank transaction ID | rejected |
 | payments | `Failed` transaction | excluded by profile, not counted |
 | payments | impossible date `13/45/2026` on an optional field | kept, warning |
+
+## Text identifiers: expected results (computed by hand)
+
+`exports/text-ids` belongs to a second invented business, "Juniper Row
+Ceramics", processed with [`profiles/juniper-row.toml`](profiles/juniper-row.toml).
+Its identifiers are opaque text (`ORD-2026-00142`, `INV-A1049`,
+`SQ-2026-10-001`, `PAY_8F3K2`, customer `00012345`) and are kept exactly,
+including letter case and leading zeros.
+
+| Order | Total | Net paid | Status | Outstanding | Overpaid |
+| --- | ---: | ---: | --- | ---: | ---: |
+| INV-A1049 | 1,200.00 | 1,100.00 (1,200.00 − 100.00 refund) | partial | 100.00 | 0.00 |
+| ORD-2026-00009 | 19.99 | 19.99 (guest order, no customer) | paid | 0.00 | 0.00 |
+| ORD-2026-00142 | 250.00 | 250.00 | paid | 0.00 | 0.00 |
+| ORD-2026-00143 | 80.00 | 50.00 | partial | 30.00 | 0.00 |
+| SQ-2026-10-001 | 45.50 | 50.00 | overpaid | 0.00 | 4.50 |
+
+Totals: order value 1,595.49; payments 1,569.99; refunds 100.00; net
+received 1,469.99; reconciled to orders 1,465.49; outstanding 130.00;
+overpaid 4.50. Customer `00012346` has no name or phone (warnings only) and
+is still matched to `ORD-2026-00143`.

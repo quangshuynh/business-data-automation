@@ -18,6 +18,10 @@ CANONICAL_STATUSES = {"paid", "partial", "pending", "refunded"}
 CANONICAL_TRANSACTION_TYPES = {"payment", "refund", "adjustment"}
 
 ID_FIELDS = {"customer_id", "order_id", "payment_id"}
+# numeric keeps the Phase 1A rule (digits only, leading zeros dropped); text
+# keeps letters, digits, separators, and leading zeros exactly as exported
+IDENTIFIER_MODES = {"numeric", "text"}
+DEFAULT_IDENTIFIER_MODE = "numeric"
 AMOUNT_FIELDS = {"total", "amount"}
 DATE_FIELDS = {"date", "payment_date"}
 
@@ -48,6 +52,7 @@ TOP_LEVEL_KEYS = {
     "input",
     "amounts",
     "reconciliation",
+    "identifiers",
     "datasets",
 }
 PROFILE_KEYS = {"name", "version", "description"}
@@ -144,6 +149,17 @@ class Profile:
     datasets: dict[str, DatasetSpec]
     source_path: str
     sha256: str
+    identifiers: dict[str, str] = field(
+        default_factory=lambda: dict.fromkeys(ID_FIELDS, DEFAULT_IDENTIFIER_MODE)
+    )
+
+    def identifier_mode(self, canonical):
+        """
+        names how an identifier family is interpreted
+        :param canonical: customer_id, order_id, or payment_id
+        :returns: numeric or text
+        """
+        return self.identifiers.get(canonical, DEFAULT_IDENTIFIER_MODE)
 
 
 def fold(value):
@@ -440,6 +456,32 @@ def parse_value_maps(table, columns, path, problems):
     return value_maps
 
 
+def parse_identifier_modes(document, problems):
+    """
+    validates the optional identifier interpretation section
+
+    a mode applies to an identifier family everywhere it appears, so an order
+    id is read the same way in the orders file and in payment references
+    :param document: parsed TOML document
+    :param problems: list collecting validation problems
+    :returns: mapping of identifier field to mode
+    """
+    table = expect_table(document, "identifiers", "", problems, required=False)
+    unknown_keys(table, ID_FIELDS, "identifiers.", problems)
+
+    modes = dict.fromkeys(ID_FIELDS, DEFAULT_IDENTIFIER_MODE)
+    for canonical, mode in table.items():
+        if canonical not in ID_FIELDS:
+            continue
+        if mode not in IDENTIFIER_MODES:
+            problems.append(
+                f"identifiers.{canonical}: must be one of {sorted(IDENTIFIER_MODES)}"
+            )
+            continue
+        modes[canonical] = mode
+    return modes
+
+
 def parse_dataset(role, table, accepted_formats, problems):
     """
     validates one dataset role configuration
@@ -621,6 +663,8 @@ def validate_profile_document(document, source_path="<memory>", sha256=""):
         )
         missing_customer = "warning"
 
+    identifiers = parse_identifier_modes(document, problems)
+
     datasets_table = expect_table(document, "datasets", "", problems)
     unknown_keys(datasets_table, set(DATASET_FIELDS), "datasets.", problems)
     datasets = {}
@@ -649,6 +693,7 @@ def validate_profile_document(document, source_path="<memory>", sha256=""):
         datasets=datasets,
         source_path=str(source_path),
         sha256=sha256,
+        identifiers=identifiers,
     )
 
 

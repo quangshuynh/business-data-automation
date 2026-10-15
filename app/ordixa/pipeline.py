@@ -9,6 +9,7 @@ import pandas as pd
 from app.ordixa.adapters import discover_inputs, read_table
 from app.ordixa.issues import ERROR, EXCLUDED, WARNING
 from app.ordixa.mapping import canonicalize
+from app.ordixa.normalize import identifier_sort_key
 from app.ordixa.validation import validate_records
 from app.reconciliation.reconcile import build_report
 
@@ -94,10 +95,40 @@ def accepted(records):
     return [record for record in records if record.accepted]
 
 
-def build_frames(records):
+def identifier_column(frame, column, mode):
+    """
+    fixes the dtype of an identifier column before the engine joins on it
+    :param frame: dataframe to adjust in place
+    :param column: identifier column
+    :param mode: numeric or text
+    :returns: none
+    """
+    if mode == "numeric":
+        # nullable integers keep guest orders (no customer) joinable
+        frame[column] = frame[column].astype("Int64")
+    else:
+        # plain objects keep text identifiers exactly as normalized
+        frame[column] = frame[column].astype(object)
+
+
+def canonical_id(value):
+    """
+    converts an identifier read back from a dataframe into a plain value
+    :param value: identifier cell
+    :returns: integer, text, or none
+    """
+    if value is None or pd.isna(value):
+        return None
+    if isinstance(value, str):
+        return value
+    return int(value)
+
+
+def build_frames(records, profile):
     """
     converts accepted canonical records into the existing engine's dataframes
     :param records: mapping of dataset role to canonical records
+    :param profile: validated import profile
     :returns: tuple of customer, order, and payment dataframes
     """
     customers = pd.DataFrame(
@@ -138,9 +169,13 @@ def build_frames(records):
         columns=["payment_id", "order_id", "amount", "transaction_type", "status"],
     )
 
-    # nullable integers keep guest orders (no customer) joinable
-    customers["customer_id"] = customers["customer_id"].astype("Int64")
-    orders["customer_id"] = orders["customer_id"].astype("Int64")
+    customer_mode = profile.identifier_mode("customer_id")
+    order_mode = profile.identifier_mode("order_id")
+    identifier_column(customers, "customer_id", customer_mode)
+    identifier_column(orders, "customer_id", customer_mode)
+    identifier_column(orders, "order_id", order_mode)
+    identifier_column(payments, "order_id", order_mode)
+    identifier_column(payments, "payment_id", profile.identifier_mode("payment_id"))
     return customers, orders, payments
 
 
@@ -172,11 +207,12 @@ def transaction_breakdown(payment_records):
     return breakdown
 
 
-def build_ledger(records, report):
+def build_ledger(records, report, profile):
     """
     combines the engine report with source references and breakdowns
     :param records: mapping of dataset role to canonical records
     :param report: dataframe returned by the reconciliation engine
+    :param profile: validated import profile
     :returns: ledger dataframe sorted by order id
     """
     orders = {
@@ -185,19 +221,21 @@ def build_ledger(records, report):
     breakdown = transaction_breakdown(accepted(records["payments"]))
     rows = []
 
-    for row in report.sort_values("order_id").to_dict(orient="records"):
-        order = orders[row["order_id"]]
+    report_rows = report.to_dict(orient="records")
+    report_rows.sort(key=lambda row: identifier_sort_key(canonical_id(row["order_id"])))
+    for row in report_rows:
+        order_id = canonical_id(row["order_id"])
+        order = orders[order_id]
         entry = breakdown.get(
-            row["order_id"],
+            order_id,
             {"payment": ZERO, "refund": ZERO, "adjustment": ZERO, "refs": []},
         )
-        customer_id = row["customer_id"]
         rows.append(
             {
                 "order_ref": order.ref,
-                "order_id": int(row["order_id"]),
+                "order_id": order_id,
                 "order_date": row["date"],
-                "customer_id": None if pd.isna(customer_id) else int(customer_id),
+                "customer_id": canonical_id(row["customer_id"]),
                 "customer_name": None if pd.isna(row["name"]) else row["name"],
                 "customer_email": None if pd.isna(row["email"]) else row["email"],
                 "customer_found": bool(row["customer_found"]),
@@ -219,7 +257,8 @@ def build_ledger(records, report):
         )
 
     ledger = pd.DataFrame(rows, columns=LEDGER_COLUMNS)
-    ledger["customer_id"] = ledger["customer_id"].astype("Int64")
+    identifier_column(ledger, "order_id", profile.identifier_mode("order_id"))
+    identifier_column(ledger, "customer_id", profile.identifier_mode("customer_id"))
     return ledger
 
 
@@ -398,14 +437,14 @@ def process(profile, input_dir):
 
     validate_records(records, profile)
 
-    customers, orders, payments = build_frames(records)
+    customers, orders, payments = build_frames(records, profile)
     if orders.empty:
         ledger = pd.DataFrame(columns=LEDGER_COLUMNS)
         reconciled_at = datetime.now(timezone.utc)
     else:
         report = build_report(customers, orders, payments)
         reconciled_at = report["reconciliation_timestamp"].iloc[0]
-        ledger = build_ledger(records, report)
+        ledger = build_ledger(records, report, profile)
     verify_integrity(ledger, records)
 
     return RunResult(
