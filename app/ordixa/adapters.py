@@ -221,15 +221,19 @@ def read_table(path, spec, profile):
     :returns: source table
     """
     path = Path(path)
-    if path.suffix.lower() == ".xlsx":
-        rows, header, malformed = read_xlsx_table(path, spec)
-    else:
-        rows, header, malformed = read_csv_table(path, spec, profile.csv_encoding)
+    try:
+        if path.suffix.lower() == ".xlsx":
+            rows, header, malformed = read_xlsx_table(path, spec)
+        else:
+            rows, header, malformed = read_csv_table(path, spec, profile.csv_encoding)
+        sha256 = file_sha256(path)
+    except OSError as error:
+        raise InputError(f"{path.name} could not be read: {error.strerror}") from error
 
     return SourceTable(
         role=spec.role,
         path=path,
-        sha256=file_sha256(path),
+        sha256=sha256,
         header=header,
         rows=tuple(rows),
         malformed_rows=tuple(malformed),
