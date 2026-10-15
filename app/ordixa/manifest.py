@@ -2,6 +2,7 @@ import csv
 import hashlib
 import json
 import secrets
+import shutil
 import subprocess
 from datetime import date, datetime, timezone
 from decimal import Decimal
@@ -190,14 +191,16 @@ def run_status(result):
     )
 
 
-def create_run_directory(out_dir, run_id):
+def create_run_directory(out_dir, run_id, staging=False):
     """
     creates a fresh directory for one run; existing runs are never overwritten
     :param out_dir: parent output directory
     :param run_id: run identifier
+    :param staging: create the hidden .run-<id>.partial directory instead
     :returns: path of the new run directory
     """
-    run_dir = Path(out_dir) / f"run-{run_id}"
+    name = f".run-{run_id}.partial" if staging else f"run-{run_id}"
+    run_dir = Path(out_dir) / name
     run_dir.mkdir(parents=True, exist_ok=False)
     return run_dir
 
@@ -205,6 +208,10 @@ def create_run_directory(out_dir, run_id):
 def write_run_outputs(result, out_dir, started_at=None):
     """
     writes the workbook, CSV artifacts, and manifest for a processed run
+
+    everything is written into a hidden staging directory that is renamed to
+    run-<id> only after the manifest is complete, so a run-<id> directory never
+    holds partial outputs; the staging directory is removed if writing fails
     :param result: run result
     :param out_dir: parent output directory
     :param started_at: optional UTC start time
@@ -212,7 +219,33 @@ def write_run_outputs(result, out_dir, started_at=None):
     """
     started_at = started_at or datetime.now(timezone.utc)
     run_id = new_run_id(started_at)
-    run_dir = create_run_directory(out_dir, run_id)
+    final_dir = Path(out_dir) / f"run-{run_id}"
+    if final_dir.exists():
+        raise FileExistsError(f"run directory already exists: {final_dir}")
+    staging_dir = create_run_directory(out_dir, run_id, staging=True)
+
+    try:
+        manifest = write_artifacts(
+            result, staging_dir, final_dir.name, run_id, started_at
+        )
+        staging_dir.rename(final_dir)
+    except BaseException:
+        shutil.rmtree(staging_dir, ignore_errors=True)
+        raise
+
+    return final_dir, manifest
+
+
+def write_artifacts(result, run_dir, final_name, run_id, started_at):
+    """
+    writes every artifact and the manifest into a directory
+    :param result: run result
+    :param run_dir: directory receiving the files
+    :param final_name: directory name recorded in the manifest
+    :param run_id: run identifier
+    :param started_at: UTC start time
+    :returns: manifest dictionary
+    """
     version = code_version()
     status = run_status(result)
 
@@ -253,6 +286,7 @@ def write_run_outputs(result, out_dir, started_at=None):
                 "name": profile.name,
                 "version": profile.version,
                 "sha256": profile.sha256,
+                "identifiers": dict(sorted(profile.identifiers.items())),
             },
             "code_version": version,
             "inputs": [
@@ -267,6 +301,10 @@ def write_run_outputs(result, out_dir, started_at=None):
             "ignored_files": len(result.ignored_files),
             "row_counts": result.counts,
             "issue_counts": severity_counts(result.issues),
+            "artifact_rows": {
+                LEDGER_NAME: len(result.ledger),
+                ISSUES_NAME: len(result.issues),
+            },
             "totals": plain(
                 {key: value for key, value in result.summary.items() if key != "issues"}
             ),
@@ -278,7 +316,7 @@ def write_run_outputs(result, out_dir, started_at=None):
             "started_at": started_at.isoformat(),
             "finished_at": datetime.now(timezone.utc).isoformat(),
             "reconciled_at": plain(result.reconciled_at),
-            "output_directory": run_dir.name,
+            "output_directory": final_name,
         },
         "outputs": outputs,
     }
@@ -288,4 +326,4 @@ def write_run_outputs(result, out_dir, started_at=None):
         encoding="utf-8",
         newline="\n",
     )
-    return run_dir, manifest
+    return manifest

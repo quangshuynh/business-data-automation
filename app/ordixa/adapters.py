@@ -1,6 +1,7 @@
 import csv
 import difflib
 import hashlib
+import io
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -8,6 +9,10 @@ from openpyxl import load_workbook
 
 from app.ordixa.issues import InputError
 from app.ordixa.normalize import is_blank
+
+# inputs are read into memory once so the recorded checksum always describes
+# exactly the bytes that were parsed; larger exports should be split by period
+MAX_INPUT_BYTES = 200 * 1024 * 1024
 
 
 @dataclass(frozen=True)
@@ -126,16 +131,19 @@ def check_header(header, spec, path):
         )
 
 
-def read_csv_table(path, spec, encoding):
+def read_csv_table(path, spec, encoding, data=None):
     """
     reads a CSV export keeping every cell as the exact source text
     :param path: CSV file path
     :param spec: dataset specification
     :param encoding: text encoding declared by the profile
-    :returns: source table
+    :param data: file bytes already read, or none to read the file
+    :returns: tuple of rows, header, and malformed row numbers
     """
+    if data is None:
+        data = path.read_bytes()
     try:
-        with path.open(newline="", encoding=encoding) as handle:
+        with io.StringIO(data.decode(encoding), newline="") as handle:
             reader = csv.reader(handle)
             header_cells = next(reader, None)
             if header_cells is None:
@@ -163,15 +171,18 @@ def read_csv_table(path, spec, encoding):
     return rows, header, malformed
 
 
-def read_xlsx_table(path, spec):
+def read_xlsx_table(path, spec, data=None):
     """
     reads an XLSX export keeping typed cell values
     :param path: workbook path
     :param spec: dataset specification
+    :param data: file bytes already read, or none to read the file
     :returns: tuple of rows, header, and malformed row numbers
     """
+    if data is None:
+        data = path.read_bytes()
     try:
-        workbook = load_workbook(path, read_only=True, data_only=True)
+        workbook = load_workbook(io.BytesIO(data), read_only=True, data_only=True)
     except Exception as error:  # openpyxl raises many unrelated exception types
         raise InputError(f"{path.name} could not be opened as XLSX: {error}") from error
 
@@ -222,13 +233,22 @@ def read_table(path, spec, profile):
     """
     path = Path(path)
     try:
-        if path.suffix.lower() == ".xlsx":
-            rows, header, malformed = read_xlsx_table(path, spec)
-        else:
-            rows, header, malformed = read_csv_table(path, spec, profile.csv_encoding)
-        sha256 = file_sha256(path)
+        size = path.stat().st_size
+        if size > MAX_INPUT_BYTES:
+            raise InputError(
+                f"{path.name} is {size:,} bytes, above the "
+                f"{MAX_INPUT_BYTES // (1024 * 1024)} MB input limit; split the "
+                "export by reporting period"
+            )
+        data = path.read_bytes()
     except OSError as error:
         raise InputError(f"{path.name} could not be read: {error.strerror}") from error
+
+    sha256 = hashlib.sha256(data).hexdigest()
+    if path.suffix.lower() == ".xlsx":
+        rows, header, malformed = read_xlsx_table(path, spec, data)
+    else:
+        rows, header, malformed = read_csv_table(path, spec, profile.csv_encoding, data)
 
     return SourceTable(
         role=spec.role,

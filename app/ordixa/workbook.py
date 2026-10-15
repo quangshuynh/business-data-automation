@@ -9,6 +9,7 @@ from openpyxl.styles import Alignment, Border, Font, PatternFill, Side
 from openpyxl.utils import get_column_letter
 
 from app.ordixa.issues import OUTCOME_LABELS
+from app.ordixa.normalize import identifier_sort_key
 
 SHEET_NAMES = ("Summary", "Exceptions", "Rejected Rows", "Full Ledger")
 
@@ -35,6 +36,13 @@ DATE_FORMAT = "yyyy-mm-dd"
 INTEGER_FORMAT = "#,##0"
 
 FORMULA_PREFIXES = ("=", "+", "-", "@", "\t", "\r", "\n", "＝", "＋")
+# Excel stores numbers as binary doubles and openpyxl writes them through float
+# repr, so only values with at most 15 significant digits survive exactly
+EXCEL_SAFE_DIGITS = 15
+MAX_CELL_TEXT = 32_767
+TRUNCATION_MARK = " [truncated]"
+# identifiers are always text cells so leading zeros and long numbers survive
+TEXT_COLUMNS = {"order_id", "customer_id", "record_id", "order_ref"}
 PLAIN_NUMBER = re.compile(r"^[-+]?[$€£¥]?\s?[0-9][0-9.,\s]*$")
 
 HEADER_FONT = Font(bold=True, color=WHITE)
@@ -116,6 +124,46 @@ def safe_text(value):
     return text
 
 
+def exact_in_excel(value):
+    """
+    checks whether a number can be stored as an Excel number without losing
+    digits
+    :param value: decimal or integer
+    :returns: true when at most 15 significant digits are needed
+    """
+    if isinstance(value, Decimal):
+        return value.is_finite() and len(value.as_tuple().digits) <= EXCEL_SAFE_DIGITS
+    return abs(value) < 10**EXCEL_SAFE_DIGITS
+
+
+def imprecise_amounts(result):
+    """
+    counts monetary values too precise for an Excel number cell
+    :param result: run result
+    :returns: number of summary and ledger values written as exact text
+    """
+    values = list(result.summary.values())
+    for row in result.ledger.to_dict(orient="records"):
+        values.extend(row[column] for column in MONEY_COLUMNS)
+    return sum(
+        1
+        for value in values
+        if isinstance(value, Decimal) and not exact_in_excel(value)
+    )
+
+
+def cell_text(value):
+    """
+    sanitizes text for a cell and keeps it within Excel's length limit
+    :param value: untrusted text
+    :returns: text no longer than 32,767 characters
+    """
+    text = safe_text(value)
+    if len(text) > MAX_CELL_TEXT:
+        text = text[: MAX_CELL_TEXT - len(TRUNCATION_MARK)] + TRUNCATION_MARK
+    return text
+
+
 def status_label(status):
     """
     converts a canonical financial status into its display label
@@ -141,8 +189,18 @@ def write_cell(sheet, row, column, value, column_name=None):
         cell.value = None
     elif isinstance(value, bool):
         cell.value = "Yes" if value else "No"
+    elif column_name in TEXT_COLUMNS:
+        cell.value = cell_text(value)
+        cell.data_type = "s"
+    elif isinstance(value, (Decimal, int)) and not exact_in_excel(value):
+        # an Excel number would silently drop digits; keep the exact value as
+        # right-aligned text instead (the Summary sheet counts these)
+        cell.value = format(value, "f") if isinstance(value, Decimal) else str(value)
+        cell.data_type = "s"
+        cell.alignment = Alignment(horizontal="right")
     elif isinstance(value, Decimal):
-        # Decimal cells are serialized from their exact decimal text
+        # at most 15 significant digits, so the float written by openpyxl
+        # converts back to exactly this decimal
         cell.value = value
         cell.number_format = MONEY_FORMAT
     elif isinstance(value, int):
@@ -155,7 +213,7 @@ def write_cell(sheet, row, column, value, column_name=None):
         cell.value = value
         cell.number_format = DATE_FORMAT
     else:
-        cell.value = safe_text(value)
+        cell.value = cell_text(value)
         cell.data_type = "s"
 
     return cell
@@ -327,6 +385,9 @@ def build_summary_sheet(sheet, result, metadata):
     line("Rejected rows (blocking)", summary["rejected_rows"], INTEGER_FORMAT)
     line("Rows kept with warnings", summary["warning_rows"], INTEGER_FORMAT)
     line("Rows excluded by profile", summary["excluded_rows"], INTEGER_FORMAT)
+    imprecise = imprecise_amounts(result)
+    if imprecise:
+        line("Amounts stored as exact text (over 15 digits)", imprecise, INTEGER_FORMAT)
     row += 1
 
     section("Input files")
@@ -360,7 +421,10 @@ def build_exceptions_sheet(sheet, result):
     for row in result.exceptions.to_dict(orient="records"):
         rows.append({**row, "exception_type": exception_type(row)})
     rows.sort(
-        key=lambda item: (EXCEPTION_ORDER[item["exception_type"]], item["order_id"])
+        key=lambda item: (
+            EXCEPTION_ORDER[item["exception_type"]],
+            identifier_sort_key(item["order_id"]),
+        )
     )
 
     headers = ["Exception"] + [
