@@ -26,8 +26,9 @@ can persist validated data to PostgreSQL, and exposes results through FastAPI.
 > exports (demonstrated with fictional Shopify/Square-style files) into the
 > canonical model, the existing reconciliation engine runs on the result, and
 > each run produces an Excel exceptions workbook plus a JSON manifest. See
-> [docs/ORDIXA.md](docs/ORDIXA.md) for capabilities and limitations. It is not
-> production-ready and does not support arbitrary vendor exports.
+> [docs/ORDIXA.md](docs/ORDIXA.md) for capabilities and limitations and
+> [docs/DATA_HANDLING.md](docs/DATA_HANDLING.md) for handling customer files.
+> It is not production-ready and does not support arbitrary vendor exports.
 
 <p align="center">
   <img src="./docs/images/dashboard.png"
@@ -190,8 +191,16 @@ python -m app.ordixa run `
 
 Each run writes a new `output/ordixa/run-<id>/` directory containing
 `ordixa_exceptions.xlsx` (Summary, Exceptions, Rejected Rows, Full Ledger),
-`reconciliation_ledger.csv`, `rejected_rows.csv`, and `manifest.json`. Details
-are in [docs/ORDIXA.md](docs/ORDIXA.md).
+`reconciliation_ledger.csv`, `rejected_rows.csv`, and `manifest.json`. Before
+writing a profile for a new export, describe it read-only (no cell values are
+printed):
+
+```powershell
+python -m app.ordixa inspect --input examples/ordixa/exports/text-ids
+```
+
+Profiles can read identifiers as numbers (the default) or as exact text such
+as `ORD-2026-00142` or `00012345`. Details are in [docs/ORDIXA.md](docs/ORDIXA.md).
 
 ## Quick start: CSV workflow
 
@@ -360,9 +369,11 @@ The suite covers:
 - FastAPI endpoints and expected failures
 - Complete CSV-to-output pipeline integration
 - Ordixa profile validation, date/amount normalization, CSV and XLSX inputs,
-  warning-versus-error severity, duplicate and referential safeguards,
-  workbook contents, formula-injection protection, manifests, reruns, and CLI
-  exit codes, with financial totals checked against hand-computed fixtures
+  text and numeric identifiers, identifier collisions, warning-versus-error
+  severity, duplicate and referential safeguards, the inspect command,
+  workbook precision and contents, formula-injection protection, manifests,
+  failed-run cleanup, reruns, and CLI exit codes, with financial totals
+  checked against hand-computed fixtures
 
 Database and API integration tests use isolated in-memory SQLite databases, so PostgreSQL and Docker are not required to run the standard suite. A live PostgreSQL/Compose smoke test remains a deliberate next step.
 
@@ -383,7 +394,7 @@ Ruff formatting, Ruff linting, and pytest run in [GitHub Actions](.github/workfl
 ## Current limitations and future improvements
 
 Ordixa-specific limitations (no cross-run order history, shared order
-identifiers required, digit-only identifiers, single currency) are listed in
+identifiers required, single currency, zero-total orders rejected) are listed in
 [docs/ORDIXA.md](docs/ORDIXA.md#known-limitations).
 
 - Payments do not yet include transaction dates, so last-payment-date reporting is unavailable

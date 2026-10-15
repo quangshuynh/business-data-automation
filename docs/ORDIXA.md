@@ -3,8 +3,12 @@
 Ordixa is the direction this project is evolving toward: a reusable tool that
 takes the order and payment exports a small business already has, maps them
 through a declared import profile, and produces a reviewable reconciliation
-workbook. Phase 1A adds that import path alongside the original Business Data
+workbook. Phase 1A added that import path alongside the original Business Data
 Automation pipeline, reusing its validation helpers and reconciliation engine.
+Phase 1B hardens it for a controlled pilot: text identifiers, an `inspect`
+command for unfamiliar exports, identifier-collision safeguards, exact
+workbook values, atomic run directories, and a
+[customer data-handling guide](DATA_HANDLING.md).
 
 Status: an early, tested foundation. It has been exercised only against the
 fictional exports in [`examples/ordixa`](../examples/ordixa). It is not
@@ -37,18 +41,27 @@ PostgreSQL is not required. Validate a profile without processing data:
 python -m app.ordixa check-profile --profile examples/ordixa/profiles/harbor-lane.toml
 ```
 
+Describe an unfamiliar export before writing a profile (read-only, see
+[Inspecting exports](#inspecting-exports)):
+
+```powershell
+python -m app.ordixa inspect --input examples/ordixa/exports/text-ids
+```
+
 | Exit code | Meaning |
 | --- | --- |
-| 0 | Run completed (rejected rows are reported, not fatal) |
-| 1 | Unexpected internal error |
+| 0 | Run completed (rejected rows are reported, not fatal); `inspect` read every file |
+| 1 | Unexpected internal error; details are withheld unless `ORDIXA_DEBUG=1` |
 | 2 | Invalid profile or command usage |
-| 3 | Input problem: missing directory, dataset, column, or unreadable file |
+| 3 | Input problem: missing directory, dataset, column, oversized or unreadable file; `inspect` could not read a file |
 | 4 | Reconciliation integrity check failed; nothing written |
-| 5 | Output location refused or not writable |
+| 5 | Output location refused or not writable; nothing kept |
 
 `--out` is a parent directory. Output inside the input directory or inside the
-tracked `examples/`, `data/`, `tests/`, or `app/` directories is refused.
-Input files are only read.
+tracked `examples/`, `data/`, `tests/`, `app/`, or `docs/` directories is
+refused, as is any other repository location except the git-ignored
+`output/` and `customer-data/` folders. Inputs inside the repository outside
+those folders and `examples/` produce a warning. Input files are only read.
 
 ## Import profiles
 
@@ -63,9 +76,10 @@ unknown keys are rejected with a spelling suggestion. The annotated example is
 | `[input]` | `formats`, `csv_encoding` | formats from `csv`, `xlsx`; encoding defaults to `utf-8-sig` |
 | `[amounts]` | `currency`, `currency_symbols`, `thousands_separator`, `decimal_separator`, `max_decimal_places`, `negative_styles` | one ISO currency per profile; at most 2 decimal places; negatives as `minus` and/or `parentheses` |
 | `[reconciliation]` | `missing_customer` | `warning` (default) or `error` |
+| `[identifiers]` | `customer_id`, `order_id`, `payment_id` | `numeric` (default, Phase 1A) or `text`; see [Identifiers](#identifiers) |
 | `[datasets.<role>]` | `required`, `files`, `sheet`, `optional_columns`, `date_formats`, `excluded_statuses`, `refund_amounts` | roles are `customers` (optional), `orders`, `payments` |
 | `[datasets.<role>.columns]` | canonical field = source header | `name` may list several columns, joined with a space |
-| `[datasets.<role>.id_prefixes]` | canonical id field = literal prefix | `#1001` → `1001`, `PMT-260801` → `260801` |
+| `[datasets.<role>.id_prefixes]` | canonical id field = literal prefix | `#1001` → `1001`, `PMT-260801` → `260801`; the prefix must be present |
 | `[datasets.payments.value_maps.status]` | source label = canonical status | targets: `paid`, `partial`, `pending`, `refunded` |
 | `[datasets.payments.value_maps.transaction_type]` | source label = canonical type | targets: `payment`, `refund`, `adjustment` |
 
@@ -96,7 +110,74 @@ themselves are accepted.
   native types: real date cells and numeric cells are used directly (they are
   not ambiguous), while text cells go through the same parsing as CSV. Only
   cached values of formula cells are read; formulas are never evaluated.
-- Identifiers must be positive whole numbers after removing a declared prefix.
+- Each input file is read into memory once (200 MB limit) so the recorded
+  checksum covers exactly the bytes parsed. Split larger exports by period.
+- Identifier rules depend on the profile's `[identifiers]` modes; see below.
+
+## Identifiers
+
+Each identifier family (`customer_id`, `order_id`, `payment_id`) has one mode
+for the whole profile, so an order number is read identically in the orders
+file and in payment references. Phase 1A profiles have no `[identifiers]`
+table and keep the `numeric` mode; their results are byte-identical to
+Phase 1A. The example [`juniper-row.toml`](../examples/ordixa/profiles/juniper-row.toml)
+uses `text` for every family.
+
+| | `numeric` (default) | `text` |
+| --- | --- | --- |
+| Accepted after prefix removal | digits only, positive, up to 2^63 − 1 | ASCII letters, digits, and `- _ . / : #`; first character a letter, digit, or `#`; at most 64 characters |
+| Examples | `#1001` → `1001`, `00012345` → `12345` | `ORD-2026-00142`, `INV-A1049`, `PAY_8F3K2`, `SQ-2026-10-001`, `00012345` (all unchanged) |
+| Leading zeros | dropped | kept |
+| Letter case | n/a | kept; never folded |
+| Rejected | letters, separators, decimals | spaces, commas, signs, non-ASCII, formula starters (`=`, `+`, `@`) |
+
+Rules common to both modes:
+
+- Only surrounding whitespace is removed, then the declared prefix, which must
+  be present. Nothing else is stripped, folded, or reformatted.
+- Identifiers never pass through floating point. A whole-number spreadsheet
+  cell becomes its digits (`12345` or `12345.0` → `12345`); fractional,
+  negative, boolean, or date cells, and floats above 2^53 that cannot be
+  exact, are rejected with advice to format the column as Text.
+- **Excel numeric cells.** If Excel already stored `00012345` as the number
+  12345, the leading zeros are gone. Ordixa does not reconstruct them; in
+  `text` mode the value is `12345`, will not match `00012345` in another file,
+  and the mismatch is reported (`customer_not_found` or `order_not_in_run`).
+  Ask for the column to be exported or formatted as Text. `inspect` warns
+  about numeric identifier cells and leading zeros.
+- **Collisions.** If two rows in a dataset spell their primary identifier
+  differently but normalize to the same value (`#1001` and `#01001` under
+  `numeric`), every such row is rejected as `identifier_collision`; dependent
+  payments are rejected with `order_rejected`. A spreadsheet number and text
+  with the same digits are the same spelling, not a collision.
+- **Case variants.** In `text` mode `INV-A1049` and `inv-a1049` are different
+  identifiers. Both rows are kept with an `identifier_case_variant` warning,
+  and a payment or customer reference that matches only by case gets a hint
+  naming the near match in its `order_not_in_run` or `customer_not_found`
+  message.
+- Ledgers sort identifiers naturally (`ORD-9` before `ORD-10`).
+
+## Inspecting exports
+
+`python -m app.ordixa inspect --input <file-or-directory>` describes CSV and
+XLSX exports before a profile exists. It reports file formats, worksheet
+names, headers, data-row counts, blank and distinct counts per column, and
+**suggestions**: possible identifier, date (with the candidate `strptime`
+formats that fit), amount (separator style, symbols, negative style, decimal
+places), and personal-data (email, phone) columns. Notes flag leading zeros,
+numeric identifier cells, numbers longer than Excel can hold, day/month
+ambiguity, surrounding whitespace, and mixed values. File-level warnings
+cover duplicate or blank headers, ragged rows, header-only files, likely
+non-comma delimiters, wrong encodings, empty files, and corrupt, protected,
+legacy (`.xls`), or unsupported files.
+
+Suggestions are heuristics and are labelled as such; `inspect` never writes
+a profile or guesses reconciliation rules. It is read-only, writes no files,
+prints no cell values by default, scans at most `--max-rows` rows per table
+(default 50,000) and files up to 200 MB, and gives identical output for
+identical input. Options: `--encoding` for CSV text, `--json` for a
+machine-readable report, and `--preview N` (opt-in, at most 10 rows) to show
+rows redacted to character shapes (`Morgan Vale` → `Aaaaaa Aaaa`).
 
 ## Normalization rules
 
@@ -133,15 +214,42 @@ payment. In the Ordixa path those problems are warnings and the money is still
 reconciled. `main.py` is unchanged because its PostgreSQL schema requires
 non-null contact fields.
 
-**Duplicates.** Rows sharing an identifier with identical content are counted
-once (the first by file name and row is kept; later copies are listed as
-rejected). Rows sharing an identifier with different content are all rejected.
+**Duplicates.** Duplicates are detected per dataset across every file in the
+run, so a transaction exported in both monthly files is seen. Rows sharing an
+identifier with identical content are counted once (the first by file name
+and row is kept; later copies are listed as rejected). Rows sharing an
+identifier with different content, such as an order whose total changed
+between periods or one transaction ID exported as both a payment and a
+refund, are all rejected, as are identifier collisions (above). Different
+transaction IDs with identical amounts are separate events and both count;
+Ordixa does not guess that they are duplicates.
 The engine itself now refuses duplicate customer, order, or payment
 identifiers, and every run cross-checks the ledger against independent sums of
 accepted rows; a mismatch stops the run (exit code 4).
 
 **Matching.** Payments are matched to orders only by the shared order
 identifier. There is no date, amount, customer, or fuzzy matching.
+
+**Customer relationships.** `customer_found` means the order's customer ID
+joined to an accepted customer row; it does not depend on the customer
+having a name. Missing names, emails, or phones are warnings and never stop
+the money from being reconciled. A customer reference that does not join is
+a warning or an error according to `missing_customer`.
+
+## Financial correctness boundaries
+
+- All parsing and arithmetic use `Decimal` at cent precision; amounts with
+  more decimal places than the profile allows are rejected, never rounded.
+- Single amounts are limited to 9,999,999,999.99; totals are exact at any size.
+- Payments and refunds must be positive after the refund-sign rule;
+  adjustments are signed and non-zero. Zero-value payments are rejected.
+- Orders must have a positive total, so free (zero-total) orders are
+  currently rejected rather than reconciled.
+- Unknown statuses or transaction types are rejected; there is no default.
+- Partial payments, overpayments, refunds, and negative adjustments are
+  reflected in the status, outstanding balance, and overpayment columns.
+- Every run cross-checks the ledger against independent sums of accepted
+  rows and stops (exit 4) on any mismatch.
 
 ## Workbook
 
@@ -154,15 +262,29 @@ identifier. There is no date, amount, customer, or fuzzy matching.
 | Rejected Rows | every issue: dataset, source file and row, record ID, outcome, whether it prevented processing, issue code, field, value, reason, original mapped values |
 | Full Ledger | every reconciled order with payment, refund, and adjustment breakdown, net paid, balances, status, flags, transaction IDs, last payment date, and source location |
 
-Money is written as numeric cells with a two-decimal format, dates as date
-cells. Tables have frozen header rows and auto-filters. Text from exports is
-stored as string cells; values that could start a formula (`=`, `+`, `-`, `@`,
-tab, CR) are prefixed with an apostrophe unless they are plain numbers such as
-`-$89.00`. The workbook contains no formulas, external links, or macros.
+Totals are calculated in Python with `Decimal`, never by spreadsheet
+formulas. Money is written as numeric cells with a two-decimal format, dates
+as date cells holding the calendar date written in the export. Excel stores
+numbers as binary doubles and the writer converts through float, so only
+values with at most 15 significant digits are exact; any monetary value
+longer than that (a total of 10,000,000,000,000.00 or more) is written as
+exact right-aligned **text**, and the Summary sheet shows how many values
+were stored this way. Order, customer, and record identifiers are always text
+cells, so leading zeros and long numbers survive. Tables have frozen header
+rows and auto-filters and stay usable when empty. Text from exports is stored
+as string cells; values that could start a formula (`=`, `+`, `-`, `@`, tab,
+CR) are prefixed with an apostrophe unless they are plain numbers such as
+`-$89.00`, control characters are removed, and text longer than Excel's
+32,767-character cell limit is truncated with a `[truncated]` marker (the CSV
+artifacts keep the full text). The workbook contains no formulas, external
+links, or macros.
 
 ## Run outputs and manifests
 
-Each run creates `run-<UTC timestamp>-<random>` under `--out`:
+Each run creates `run-<UTC timestamp>-<random>` under `--out`. Files are
+written into a hidden `.run-<id>.partial` directory that is renamed to
+`run-<id>` only after the manifest is complete; if anything fails, the
+staging directory is removed, so a `run-<id>` directory is always complete.
 
 | File | Deterministic | Contents |
 | --- | --- | --- |
@@ -172,9 +294,10 @@ Each run creates `run-<UTC timestamp>-<random>` under `--out`:
 | `manifest.json` | no | see below |
 
 The manifest separates `result` (stable for identical inputs, profile, and
-code: status, profile name/version/SHA-256, code version and git commit,
-input file names with SHA-256 and row counts, row and issue counts, totals,
-and a `result_fingerprint` hashing the ledger, issues, and summary) from
+code: status, profile name/version/SHA-256 and identifier modes, code version
+and git commit, input file names with the SHA-256 of the exact bytes parsed
+and row counts, row and issue counts, row counts of each CSV artifact,
+totals, and a `result_fingerprint` hashing the ledger, issues, and summary) from
 `execution` (run ID, start/finish/reconciliation timestamps, directory name).
 `outputs` lists each artifact's SHA-256 and whether it is deterministic. The
 manifest holds no names, emails, phone numbers, or row values; it does hold
@@ -199,8 +322,17 @@ those hand-entered values in `tests/ordixa_golden.py`.
   instead. Nothing is persisted between runs.
 - **Shared identifiers required.** Exports without a common order reference
   cannot be reconciled in this phase.
-- **Integer identifiers.** After prefix removal, identifiers must be digits.
-  Alphanumeric vendor IDs (for example `pay_8KQ2`) are not supported yet.
+- **Not an accounting ledger.** A workbook covers only the files in its run.
+- **Identifiers are exact.** Case, separators, and leading zeros must match
+  between files in `text` mode; leading zeros lost by Excel are not restored.
+- **Zero-total orders** (fully discounted orders) are rejected.
+- **No duplicate guessing.** Repeated identical amounts with different
+  transaction IDs both count; a vendor that re-issues IDs on re-export will
+  double count and must be handled by supplying each transaction once.
+- **Inspect heuristics.** `inspect` suggestions can be wrong; they never feed
+  processing. Formula cells are read only through cached values.
+- **File size and formats.** Inputs above 200 MB are refused; legacy `.xls`,
+  `.xlsm`, `.xlsb`, `.ods`, and non-comma delimited files are unsupported.
 - **One currency per run**, no conversion.
 - **Profile import path does not write to PostgreSQL**, and the API and
   dashboard still read only from the legacy persisted data.
@@ -213,14 +345,21 @@ those hand-entered values in `tests/ordixa_golden.py`.
 Exports contain personal data. Ordixa runs locally, sends nothing over the
 network, and does not modify inputs. The workbook and `rejected_rows.csv`
 include customer names, emails, and offending values because reviewers need
-them; store run directories with the same care as the exports. `output/` is
-git-ignored. Do not commit real customer exports to this repository.
+them; store run directories with the same care as the exports. `output/` and
+`customer-data/` are git-ignored. Do not commit real customer exports to this
+repository. Operating guidance for real customer files is in
+[DATA_HANDLING.md](DATA_HANDLING.md).
+
+## Branches
+
+Phase 1A was developed on `feat/ordixa-profile-driven-imports`. Phase 1B is
+on `feat/ordixa-import-hardening`, branched from the final Phase 1A commit
+(`a5ef7a9`) and not merged. Phase 1A profiles work unchanged on Phase 1B.
 
 ## Roadmap (not implemented)
 
-1. Profile authoring help: a header inspection command and starter profiles
-   validated against real, consented sample exports.
-2. Opaque string identifiers and per-dataset currency.
+1. Starter profiles validated against real, consented sample exports.
+2. Per-dataset currency.
 3. Optional persisted import history so later payments can be matched to
    earlier orders explicitly and auditably.
 4. Workbook review loop: carry reviewer notes between runs.
