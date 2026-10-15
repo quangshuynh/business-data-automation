@@ -1,9 +1,16 @@
 import argparse
+import json
 import sys
 from datetime import datetime, timezone
 from pathlib import Path
 
 from app.ordixa import __version__
+from app.ordixa.inspection import (
+    DEFAULT_MAX_ROWS,
+    MAX_PREVIEW_ROWS,
+    format_report,
+    inspect_path,
+)
 from app.ordixa.issues import InputError
 from app.ordixa.manifest import MANIFEST_NAME, WORKBOOK_NAME, write_run_outputs
 from app.ordixa.pipeline import ReconciliationIntegrityError, process
@@ -93,7 +100,76 @@ def build_parser():
 
     check = commands.add_parser("check-profile", help="validate a profile only")
     check.add_argument("--profile", required=True, type=Path, help="TOML profile")
+
+    inspect = commands.add_parser(
+        "inspect",
+        help="describe unfamiliar CSV/XLSX exports before writing a profile",
+        description=(
+            "Read-only. Reports worksheets, headers, row counts, and suggested "
+            "column types without printing cell values or writing any files."
+        ),
+    )
+    inspect.add_argument(
+        "--input", required=True, type=Path, help="export file or directory"
+    )
+    inspect.add_argument(
+        "--encoding", default="utf-8-sig", help="CSV text encoding (utf-8-sig)"
+    )
+    inspect.add_argument(
+        "--max-rows",
+        type=positive_int,
+        default=DEFAULT_MAX_ROWS,
+        help=f"data rows to scan per table (default {DEFAULT_MAX_ROWS})",
+    )
+    inspect.add_argument(
+        "--preview",
+        type=positive_int,
+        default=0,
+        metavar="ROWS",
+        help=(
+            f"show up to {MAX_PREVIEW_ROWS} rows redacted to character shapes "
+            "(letters as A/a, digits as 9); off by default"
+        ),
+    )
+    inspect.add_argument("--json", action="store_true", help="print the report as JSON")
     return parser
+
+
+def positive_int(text):
+    """
+    parses a positive integer command line value
+    :param text: argument text
+    :returns: integer
+    """
+    try:
+        value = int(text)
+    except ValueError:
+        raise argparse.ArgumentTypeError(f"{text!r} is not a whole number") from None
+    if value < 1:
+        raise argparse.ArgumentTypeError("must be at least 1")
+    return value
+
+
+def inspect_command(args):
+    """
+    executes the read-only inspect subcommand
+    :param args: parsed arguments
+    :returns: exit code
+    """
+    try:
+        reports = inspect_path(args.input, args.encoding, args.max_rows, args.preview)
+    except LookupError:
+        report(f"unknown encoding {args.encoding!r}", sys.stderr)
+        return EXIT_USAGE
+    except FileNotFoundError:
+        report(f"input error: {args.input} does not exist", sys.stderr)
+        return EXIT_INPUT
+
+    if args.json:
+        print(json.dumps({"files": reports}, indent=2, ensure_ascii=False))
+    else:
+        print(format_report(reports, args.max_rows))
+    return EXIT_INPUT if any(item["errors"] for item in reports) else EXIT_OK
 
 
 def run_command(args):
@@ -146,6 +222,8 @@ def main(argv=None):
     args = build_parser().parse_args(argv)
 
     try:
+        if args.command == "inspect":
+            return inspect_command(args)
         if args.command == "check-profile":
             profile = load_profile(args.profile)
             report(f"profile {profile.name} {profile.version} is valid")
