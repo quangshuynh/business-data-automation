@@ -1,0 +1,6 @@
+Transaction ID,Order Reference,Date,Type,Status,Amount,Currency,Card Brand,Notes
+PMT-260801,#1001,08/03/2026,Payment,Paid,$129.99,USD,Visa,
+PMT-260802,#1002,08/06/2026,Payment,Partially Paid,$500.00,USD,Mastercard,deposit
+PMT-260803,#1004,08/19/2026,Payment,Paid,$230.00,USD,Visa,customer added tip in error
+PMT-260804,#1005,08/28/2026,Payment,Paid,$89.00,USD,Amex,
+PMT-260805,#1005,08/30/2026,Refund,Refunded,-$89.00,USD,Amex,item returned

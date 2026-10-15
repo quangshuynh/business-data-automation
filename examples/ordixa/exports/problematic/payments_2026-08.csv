@@ -1,0 +1,10 @@
+Transaction ID,Order Reference,Date,Type,Status,Amount,Currency,Card Brand,Notes
+PMT-270001,#2001,08/02/2026,Payment,Paid,$100.00,USD,Visa,
+PMT-270002,#2002,08/04/2026,Payment,Partially Paid,$150.00,USD,Visa,
+PMT-270003,#2003,08/06/2026,Payment,Paid,$50.00,USD,Mastercard,
+PMT-270004,#2004,08/07/2026,Payment,Paid,$40.00,USD,Visa,
+PMT-270005,#2007,08/12/2026,Payment,Paid,$60.00,USD,Amex,
+PMT-270005,#2007,08/12/2026,Payment,Paid,$60.00,USD,Amex,
+PMT-270006,#2001,08/15/2026,Payment,Chargeback,$100.00,USD,Visa,disputed
+PMT-270007,#1999,08/16/2026,Payment,Paid,$45.00,USD,Visa,order from an earlier export
+PMT-270008,#2001,08/17/2026,Payment,Paid,"1.234,56",USD,Visa,european formatting

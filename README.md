@@ -11,7 +11,7 @@
   <a href="https://github.com/quangshuynh/business-data-automation/releases">
     <img src="https://img.shields.io/github/v/release/quangshuynh/business-data-automation" alt="Release">
   </a>
-  <img src="https://img.shields.io/badge/tests-52%20passing-brightgreen" alt="Tests: 52 passing">
+  <img src="https://img.shields.io/badge/tests-209%20passing-brightgreen" alt="Tests: 209 passing">
   <img src="https://img.shields.io/badge/python-3.11%2B-blue" alt="Python 3.11+">
 </p>
 
@@ -20,6 +20,14 @@ payment CSV files, quarantines invalid records, reconciles financial balances,
 can persist validated data to PostgreSQL, and exposes results through FastAPI.
 
 [Portfolio narrative, resume bullets, and interview guide](docs/PORTFOLIO.md)
+
+> **Evolving into Ordixa.** The project now also includes an early,
+> profile-driven import path: a versioned TOML profile maps CSV or XLSX
+> exports (demonstrated with fictional Shopify/Square-style files) into the
+> canonical model, the existing reconciliation engine runs on the result, and
+> each run produces an Excel exceptions workbook plus a JSON manifest. See
+> [docs/ORDIXA.md](docs/ORDIXA.md) for capabilities and limitations. It is not
+> production-ready and does not support arbitrary vendor exports.
 
 <p align="center">
   <img src="./docs/images/dashboard.png"
@@ -70,6 +78,7 @@ Application responsibilities are separated by runtime role:
 app/
 ├── api/             HTTP routes, dependencies, and response schemas
 ├── db/              SQLAlchemy models, sessions, and persistence
+├── ordixa/          profile-driven CSV/XLSX imports, workbook, manifests, CLI
 ├── reconciliation/  financial calculations and report construction
 ├── services/        database-to-business-logic coordination
 ├── validators/      structural and record-level validation
@@ -77,6 +86,10 @@ app/
 
 main.py              CSV batch entry point and pipeline orchestration
 ```
+
+`app/ordixa` adds a second batch entry point (`python -m app.ordixa run`) that
+reuses the validators' primitives and the same reconciliation engine; it does
+not change `main.py` behavior.
 
 The API and batch workflow share the same reconciliation implementation. Database code stays outside `main.py`, while API routes delegate cross-layer reconciliation work to a focused service rather than duplicating calculations.
 
@@ -165,6 +178,20 @@ output/invalid_payments.csv
 ```
 
 The runtime directory is ignored by Git because the reconciliation timestamp changes on every run. Stable examples from the included input data are committed under [`examples/output`](examples/output).
+
+## Quick start: Ordixa profile workflow
+
+```powershell
+python -m app.ordixa run `
+  --profile examples/ordixa/profiles/harbor-lane.toml `
+  --input examples/ordixa/exports/clean `
+  --out output/ordixa
+```
+
+Each run writes a new `output/ordixa/run-<id>/` directory containing
+`ordixa_exceptions.xlsx` (Summary, Exceptions, Rejected Rows, Full Ledger),
+`reconciliation_ledger.csv`, `rejected_rows.csv`, and `manifest.json`. Details
+are in [docs/ORDIXA.md](docs/ORDIXA.md).
 
 ## Quick start: CSV workflow
 
@@ -319,7 +346,7 @@ python -m pytest
 Current result:
 
 ```text
-52 passed
+209 passed
 ```
 
 The suite covers:
@@ -332,6 +359,10 @@ The suite covers:
 - Transaction rollback and primary-key upsert behavior
 - FastAPI endpoints and expected failures
 - Complete CSV-to-output pipeline integration
+- Ordixa profile validation, date/amount normalization, CSV and XLSX inputs,
+  warning-versus-error severity, duplicate and referential safeguards,
+  workbook contents, formula-injection protection, manifests, reruns, and CLI
+  exit codes, with financial totals checked against hand-computed fixtures
 
 Database and API integration tests use isolated in-memory SQLite databases, so PostgreSQL and Docker are not required to run the standard suite. A live PostgreSQL/Compose smoke test remains a deliberate next step.
 
@@ -343,12 +374,17 @@ Ruff formatting, Ruff linting, and pytest run in [GitHub Actions](.github/workfl
 - Financial truth comes from transaction amounts, not source status labels
 - Refunds are positive source amounts with a negative reconciliation effect
 - Financial values are validated and reconciled with `Decimal` values at cent precision
+- The reconciliation engine refuses duplicate identifiers that a merge would count twice
 - Valid records are persisted transactionally; invalid records remain explainable CSV artifacts
 - PostgreSQL persistence is optional so the original batch workflow stays useful
 - ORM, API, validation, reconciliation, and orchestration responsibilities remain separate
 - The design avoids repository interfaces, dependency-injection frameworks, and class hierarchies that the current complexity does not justify
 
 ## Current limitations and future improvements
+
+Ordixa-specific limitations (no cross-run order history, shared order
+identifiers required, digit-only identifiers, single currency) are listed in
+[docs/ORDIXA.md](docs/ORDIXA.md#known-limitations).
 
 - Payments do not yet include transaction dates, so last-payment-date reporting is unavailable
 - Schema changes currently require manual migration or database recreation; Alembic would be the next database maturity step

@@ -1,0 +1,6 @@
+Name,Created at,Customer ID,Email,Financial Status,Currency,Total,Shipping Method
+#1001,2026-08-03 09:15:00 -0400,7000101,avery.quinn@example.com,paid,USD,129.99,Standard
+#1002,2026-08-05 13:40:12 -0400,7000102,blake.moreno@example.net,partially_paid,USD,1250.00,Freight
+#1003,2026-08-11 18:02:47 -0400,7000103,casey.l@example.org,pending,USD,75.50,Standard
+#1004,2026-08-19 08:30:00 -0400,7000104,devon.okafor@example.com,paid,USD,210.00,Express
+#1005,2026-08-27 21:55:31 -0400,7000105,emerson.vale@example.com,refunded,USD,89.00,Standard

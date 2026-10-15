@@ -1,0 +1,83 @@
+# Ordixa import profile for the fictional Harbor Lane Supply Co. exports.
+# Orders and customers come from a Shopify-style storefront export and
+# payments from a Square-style processor export. See docs/ORDIXA.md.
+schema_version = 1
+
+[profile]
+name = "harbor-lane"
+version = "1.0.0"
+description = "Fictional storefront orders + processor payments (example data)"
+
+[input]
+formats = ["csv", "xlsx"]
+csv_encoding = "utf-8-sig"
+
+[amounts]
+currency = "USD"
+currency_symbols = ["$"]
+thousands_separator = ","
+decimal_separator = "."
+max_decimal_places = 2
+negative_styles = ["minus", "parentheses"]
+
+[reconciliation]
+# an order whose customer record is missing or rejected is still reconciled;
+# set to "error" to reject such orders instead
+missing_customer = "warning"
+
+[datasets.customers]
+required = false
+files = ["customers*.csv", "customers*.xlsx"]
+
+[datasets.customers.columns]
+customer_id = "Customer ID"
+name = ["First Name", "Last Name"]
+email = "Email"
+phone = "Phone"
+
+[datasets.orders]
+files = ["orders*.csv", "orders*.xlsx"]
+date_formats = ["%Y-%m-%d %H:%M:%S %z", "%Y-%m-%d"]
+
+[datasets.orders.columns]
+order_id = "Name"
+customer_id = "Customer ID"
+date = "Created at"
+total = "Total"
+currency = "Currency"
+
+[datasets.orders.id_prefixes]
+order_id = "#"
+
+[datasets.payments]
+files = ["payments*.csv", "payments*.xlsx"]
+date_formats = ["%m/%d/%Y"]
+# refunds appear in the processor export as negative amounts
+refund_amounts = "negative"
+# declined and voided transactions moved no money; they are listed in the
+# workbook as excluded rather than counted
+excluded_statuses = ["Failed", "Voided"]
+
+[datasets.payments.columns]
+payment_id = "Transaction ID"
+order_id = "Order Reference"
+payment_date = "Date"
+amount = "Amount"
+transaction_type = "Type"
+status = "Status"
+currency = "Currency"
+
+[datasets.payments.id_prefixes]
+payment_id = "PMT-"
+order_id = "#"
+
+[datasets.payments.value_maps.transaction_type]
+"Payment" = "payment"
+"Refund" = "refund"
+"Adjustment" = "adjustment"
+
+[datasets.payments.value_maps.status]
+"Paid" = "paid"
+"Partially Paid" = "partial"
+"Pending" = "pending"
+"Refunded" = "refunded"

@@ -78,6 +78,27 @@ def get_discrepancy_flags(row, source_paid_order_ids):
     return "; ".join(flags)
 
 
+def ensure_unique_ids(frame, id_column, dataset_name):
+    """
+    guards against identifiers that would be counted twice by a merge
+    :param frame: dataframe passed to the report builder
+    :param id_column: identifier column that must be unique
+    :param dataset_name: dataset name used in the error message
+    :returns: none
+    """
+    if id_column not in frame.columns:
+        return
+
+    identifiers = frame[id_column].dropna()
+    duplicates = sorted(set(identifiers[identifiers.duplicated()]))
+
+    if duplicates:
+        raise ValueError(
+            f"{dataset_name} contain duplicate {id_column} values {duplicates}; "
+            "reconciliation would count them more than once"
+        )
+
+
 def build_report(customers, orders, payments):
     """
     builds a reconciliation report by combining customer, order and payment data
@@ -86,6 +107,10 @@ def build_report(customers, orders, payments):
     :param payments: dataframe containing payment information
     :returns: a dataframe containing the completed reconciliation report
     """
+    ensure_unique_ids(customers, "customer_id", "customers")
+    ensure_unique_ids(orders, "order_id", "orders")
+    ensure_unique_ids(payments, "payment_id", "payments")
+
     order_columns = [
         column
         for column in ["order_id", "customer_id", "date", "total"]
@@ -108,6 +133,7 @@ def build_report(customers, orders, payments):
         customers[customer_columns],
         on="customer_id",
         how="left",
+        indicator="_customer_match",
     )
     report["total"] = report["total"].apply(round_financial_amount)
 
@@ -140,7 +166,8 @@ def build_report(customers, orders, payments):
     report["overpayment_amount"] = (
         (-report["balance_due"]).clip(lower=0).apply(round_financial_amount)
     )
-    report["customer_found"] = report["name"].notna()
+    # a matched customer may legitimately have a blank optional name
+    report["customer_found"] = report.pop("_customer_match") == "both"
 
     report["financial_status"] = report.apply(
         lambda row: calculate_financial_status(
