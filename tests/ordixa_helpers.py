@@ -69,3 +69,61 @@ def csv_to_xlsx(csv_path, xlsx_path, sheet_title="Export"):
             sheet.append(row)
     workbook.save(xlsx_path)
     return Path(xlsx_path)
+
+
+# headers of the fictional Harbor Lane exports, used to build small edge cases
+CUSTOMER_HEADER = ["Customer ID", "First Name", "Last Name", "Email", "Phone"]
+ORDER_HEADER = ["Name", "Created at", "Customer ID", "Currency", "Total"]
+PAYMENT_HEADER = [
+    "Transaction ID",
+    "Order Reference",
+    "Date",
+    "Type",
+    "Status",
+    "Amount",
+    "Currency",
+]
+
+
+def write_rows(path, header, rows):
+    """
+    writes a small CSV export for an edge-case test
+    :param path: destination CSV path
+    :param header: header cells
+    :param rows: list of row cell lists
+    :returns: destination path
+    """
+    path = Path(path)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    with path.open("w", newline="", encoding="utf-8") as handle:
+        writer = csv.writer(handle, lineterminator="\n")
+        writer.writerow(header)
+        writer.writerows(rows)
+    return path
+
+
+def write_exports(directory, orders, payments, customers=None):
+    """
+    writes an order, payment, and optional customer export into one directory
+    :param directory: input directory to create
+    :param orders: order rows in ORDER_HEADER order
+    :param payments: payment rows in PAYMENT_HEADER order
+    :param customers: optional customer rows in CUSTOMER_HEADER order
+    :returns: directory path
+    """
+    directory = Path(directory)
+    write_rows(directory / "orders.csv", ORDER_HEADER, orders)
+    write_rows(directory / "payments.csv", PAYMENT_HEADER, payments)
+    if customers is not None:
+        write_rows(directory / "customers.csv", CUSTOMER_HEADER, customers)
+    return directory
+
+
+def issue_codes(result, record_id):
+    """
+    lists issue codes recorded for one source identifier
+    :param result: run result
+    :param record_id: identifier as written in the export
+    :returns: sorted list of issue codes
+    """
+    return sorted(i.code for i in result.issues if i.record_id == record_id)
