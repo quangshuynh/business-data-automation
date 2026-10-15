@@ -1,5 +1,6 @@
 import argparse
 import json
+import os
 import sys
 from datetime import datetime, timezone
 from pathlib import Path
@@ -25,7 +26,9 @@ EXIT_OUTPUT = 5
 
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
 # tracked directories that a run must never write into
-PROTECTED_DIRS = ("examples", "data", "tests", "app")
+PROTECTED_DIRS = ("examples", "data", "tests", "app", "docs")
+# git-ignored directories where customer files and run outputs may live
+IGNORED_DIRS = ("output", "customer-data")
 
 
 def report(message, stream=None):
@@ -70,6 +73,33 @@ def check_output_location(out_dir, input_dir):
                 f"output directory {out_dir} is inside the tracked {name}/ "
                 "directory; choose a location such as output/"
             )
+    if is_within(out_dir, PROJECT_ROOT) and not any(
+        is_within(out_dir, PROJECT_ROOT / name) for name in IGNORED_DIRS
+    ):
+        raise OSError(
+            f"output directory {out_dir} is inside the repository but not in a "
+            "git-ignored folder; use output/ or a location outside the repository"
+        )
+
+
+def warn_about_input_location(input_dir):
+    """
+    warns when exports sit in the repository where they could be committed
+    :param input_dir: input export directory
+    :returns: none
+    """
+    if not is_within(input_dir, PROJECT_ROOT):
+        return
+    if any(
+        is_within(input_dir, PROJECT_ROOT / name)
+        for name in ("examples", "tests", *IGNORED_DIRS)
+    ):
+        return
+    report(
+        f"warning: {input_dir} is inside the repository and not git-ignored; keep "
+        "customer exports outside the repository or in customer-data/",
+        sys.stderr,
+    )
 
 
 def build_parser():
@@ -183,6 +213,7 @@ def run_command(args):
     report(f"profile {profile.name} {profile.version} is valid")
 
     check_output_location(args.out, args.input)
+    warn_about_input_location(args.input)
     result = process(profile, args.input)
     for item in result.inputs:
         report(f"read {item.role}: {item.name} ({item.data_rows} rows)")
@@ -242,5 +273,13 @@ def main(argv=None):
         report(f"output error: {error}", sys.stderr)
         return EXIT_OUTPUT
     except Exception as error:  # last-resort guard so automation sees a code
-        report(f"unexpected error: {type(error).__name__}: {error}", sys.stderr)
+        # library messages can quote cell values, so details are opt-in
+        details = (
+            f": {error}"
+            if os.environ.get("ORDIXA_DEBUG")
+            else " (details withheld because they may contain row values; set "
+            "ORDIXA_DEBUG=1 to show them)"
+        )
+        report(f"unexpected error: {type(error).__name__}{details}", sys.stderr)
+        report("no run directory was kept", sys.stderr)
         return EXIT_UNEXPECTED

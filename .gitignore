@@ -11,3 +11,7 @@ htmlcov/
 
 output/*
 !output/.gitkeep
+
+# customer exports and Ordixa run staging must never be committed
+customer-data/
+.run-*.partial/
