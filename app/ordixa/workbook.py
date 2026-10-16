@@ -112,10 +112,10 @@ EXCEPTION_COLUMNS = [
     "net_paid",
     "outstanding_balance",
     "overpayment_amount",
+    "review_note",
     "transaction_count",
     "transaction_refs",
     "discrepancy_flags",
-    "review_note",
     "source_location",
 ]
 EXCEPTION_HEADERS = {
