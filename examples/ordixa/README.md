@@ -24,10 +24,14 @@ exports/
 ├── problematic/    the same structure, seeded with deliberate defects
 ├── demo/           October 2026 customer demo: CSV storefront exports plus
 │                   an XLSX processor export, realistic mix of issues
+├── pilot/          November 2026 pilot onboarding: three deliveries of one
+│                   batch (missing file, changed header, final batch)
 └── text-ids/       "Juniper Row Ceramics": opaque text identifiers
 ```
 
-`clean/`, `problematic/`, and `text-ids/` are compact test fixtures. `demo/`
+`clean/`, `problematic/`, and `text-ids/` are compact test fixtures.
+`pilot/` replays a pilot onboarding; see
+[Pilot onboarding scenario](#pilot-onboarding-scenario-november-2026). `demo/`
 is the walkthrough dataset: one month of Harbor Lane trading where most rows
 are fine and a handful need attention, which is what a real review looks
 like. Its scenario and hand-computed results are in
@@ -111,3 +115,37 @@ Totals: order value 1,595.49; payments 1,569.99; refunds 100.00; net
 received 1,469.99; reconciled to orders 1,465.49; outstanding 130.00;
 overpaid 4.50. Customer `00012346` has no name or phone (warnings only) and
 is still matched to `ORD-2026-00143`.
+
+## Pilot onboarding scenario (November 2026)
+
+`exports/pilot` replays how Harbor Lane's November batch might arrive during a
+pilot, using the same `harbor-lane.toml` profile. Each folder is one delivery
+from the (fictional) customer. The operator decisions are described in
+[docs/pilot/SCENARIO.md](../../docs/pilot/SCENARIO.md).
+
+| Folder | What arrived | What happens |
+| --- | --- | --- |
+| `1-first-delivery/` | orders only, with an unrequested `Shipping Address` column | blocked: no payments file; the address column is flagged as personal data the profile does not use |
+| `2-second-delivery/` | orders without the address, payments with `Order Reference` renamed to `Order Ref` | blocked: a required column is missing, and the nearest header is named |
+| `3-final-delivery/` | customers, orders, payments with the original headers | processed; two payments cannot be matched |
+
+Final delivery, expected results (computed by hand):
+
+| Order | Total | Net paid | Status | Outstanding | Overpaid |
+| --- | ---: | ---: | --- | ---: | ---: |
+| #4101 | 64.00 | 64.00 | paid | 0.00 | 0.00 |
+| #4102 | 2,150.00 | 1,075.00 (50% deposit) | partial | 1,075.00 | 0.00 |
+| #4103 | 98.50 | 0.00 | unpaid | 98.50 | 0.00 |
+| #4104 | 310.00 | 285.00 (310.00 − 25.00 refund) | partial | 25.00 | 0.00 |
+| #4105 | 47.25 | 47.25 (new customer) | paid | 0.00 | 0.00 |
+| #4106 | 129.00 | 0.00 (its payment cites `#4016`) | unpaid | 129.00 | 0.00 |
+
+Totals: order value 2,798.75; payments 1,496.25; refunds 25.00; adjustments
+0.00; net received 1,471.25; reconciled to orders 1,471.25; outstanding
+1,327.50; overpaid 0.00. Two payment rows are rejected as `order_not_in_run`:
+
+- `PMT-291106` pays October's net-30 invoice `#3004`, which is not in the
+  November order file (the cross-run limitation).
+- `PMT-291107` cites `#4016`, a transposed reference. Its amount equals
+  `#4106`'s total, but Ordixa never matches by amount, so `#4106` stays unpaid
+  until the customer confirms the reference.
