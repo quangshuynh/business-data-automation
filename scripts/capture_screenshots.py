@@ -53,7 +53,7 @@ SHEETS = [
     ("Summary", "workbook-summary.png", "", "portrait"),
     ("Exceptions", "workbook-exceptions.png", "KLMN", "landscape"),
     ("Rejected Rows", "workbook-rejected-rows.png", "K", "landscape"),
-    ("Full Ledger", "workbook-full-ledger.png", "BDFGQRSTU", "landscape"),
+    ("Full Ledger", "workbook-full-ledger.png", "BDFQRSTU", "landscape"),
 ]
 
 
@@ -105,8 +105,9 @@ def capture_sheet(workbook_path, sheet_name, omitted, orientation, work_dir, tar
         if other != sheet_name:
             del workbook[other]
     sheet = workbook[sheet_name]
-    # omitted columns are deleted rather than hidden: LibreOffice misplaces
-    # indented figures next to blank cells when columns are hidden
+    # omitted columns are deleted; keep the column before each figure column
+    # non-blank, as in the real workbook, because LibreOffice drops the indent
+    # of a right-aligned figure whose left neighbour is empty
     kept = [
         get_column_letter(index)
         for index in range(1, sheet.max_column + 1)

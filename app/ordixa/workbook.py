@@ -593,7 +593,7 @@ def build_summary_sheet(sheet, result, metadata):
                 cell.alignment = Alignment(indent=1)
         row += 1
 
-    for letter, column_width in zip("ABCDEF", (34, 24, 13, 15, 14, 17)):
+    for letter, column_width in zip("ABCDEF", (34, 24, 13, 15, 14, 21)):
         sheet.column_dimensions[letter].width = column_width
     sheet.sheet_view.showGridLines = False
     set_print_layout(sheet, landscape=False)
