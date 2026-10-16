@@ -4,14 +4,13 @@
 
 # Ordixa
 <p align="center">
-  <a href="https://github.com/quangshuynh/business-data-automation/actions">
-    <img src="https://github.com/quangshuynh/business-data-automation/actions/workflows/ci.yml/badge.svg" alt="CI">
+  <a href="https://github.com/quangshuynh/ordixa/actions/workflows/ci.yml">
+    <img src="https://github.com/quangshuynh/ordixa/actions/workflows/ci.yml/badge.svg" alt="CI">
   </a>
-  <a href="https://github.com/quangshuynh/business-data-automation/releases">
-    <img src="https://img.shields.io/github/v/release/quangshuynh/business-data-automation" alt="Release">
+  <a href="https://github.com/quangshuynh/ordixa/releases">
+    <img src="https://img.shields.io/github/v/release/quangshuynh/ordixa" alt="Release">
   </a>
-  <img src="https://img.shields.io/badge/tests-52%20passing-brightgreen" alt="Tests: 52 passing">
-  <img src="https://img.shields.io/badge/python-3.11%2B-blue" alt="Python 3.11+">
+  <img src="https://img.shields.io/badge/python-3.14-blue" alt="Python 3.14">
 </p>
 
 **Less busywork. More clarity.**
@@ -19,8 +18,6 @@
 Turn messy business exports into clear, actionable reports. Ordixa imports
 CSV and Excel files, applies repeatable validation rules, reconciles orders
 and payments, and puts every exception in a structured workbook.
-
-[![CI](https://github.com/quangshuynh/business-data-automation/actions/workflows/ci.yml/badge.svg)](https://github.com/quangshuynh/business-data-automation/actions/workflows/ci.yml)
 
 <p align="center">
   <img src="docs/images/workbook-exceptions.png" width="900"
@@ -73,8 +70,8 @@ inspection, Rejected Rows, and Full Ledger.
 Prerequisites: Python 3.14 (the version CI uses) and Git.
 
 ```bash
-git clone https://github.com/quangshuynh/business-data-automation.git
-cd business-data-automation
+git clone https://github.com/quangshuynh/ordixa.git
+cd ordixa
 python -m venv .venv
 source .venv/bin/activate        # Windows PowerShell: .venv\Scripts\Activate.ps1
 python -m pip install -r requirements.txt
