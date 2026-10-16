@@ -1,14 +1,12 @@
 # Ordixa: profile-driven imports and exceptions workbook
 
-Ordixa is the direction this project is evolving toward: a reusable tool that
-takes the order and payment exports a small business already has, maps them
-through a declared import profile, and produces a reviewable reconciliation
-workbook. Phase 1A added that import path alongside the original Business Data
-Automation pipeline, reusing its validation helpers and reconciliation engine.
-Phase 1B hardens it for a controlled pilot: text identifiers, an `inspect`
-command for unfamiliar exports, identifier-collision safeguards, exact
-workbook values, atomic run directories, and a
-[customer data-handling guide](DATA_HANDLING.md).
+Detailed reference for Ordixa: a tool that takes the order and payment
+exports a small business already has, maps them through a declared import
+profile, and produces a reviewable reconciliation workbook. It sits alongside
+the original Business Data Automation pipeline and reuses its validation
+helpers and reconciliation engine. The [README](../README.md) is the overview,
+[DEMO.md](DEMO.md) the guided walkthrough, and [DATA_HANDLING.md](DATA_HANDLING.md)
+the procedure for real customer files.
 
 Status: an early, tested foundation. It has been exercised only against the
 fictional exports in [`examples/ordixa`](../examples/ordixa). It is not
@@ -27,24 +25,22 @@ customer export (CSV/XLSX)
 
 ## Quick start
 
-```powershell
+```bash
 python -m pip install -r requirements.txt
-python -m app.ordixa run `
-  --profile examples/ordixa/profiles/harbor-lane.toml `
-  --input examples/ordixa/exports/problematic `
-  --out output/ordixa
+python -m app.ordixa run --profile examples/ordixa/profiles/harbor-lane.toml   --input examples/ordixa/exports/demo --out output/ordixa
 ```
 
-PostgreSQL is not required. Validate a profile without processing data:
+PostgreSQL is not required. `python -m app.ordixa.demo` runs the same
+workflow as a guided, self-verifying walkthrough ([DEMO.md](DEMO.md)). Validate a profile without processing data:
 
-```powershell
+```bash
 python -m app.ordixa check-profile --profile examples/ordixa/profiles/harbor-lane.toml
 ```
 
 Describe an unfamiliar export before writing a profile (read-only, see
 [Inspecting exports](#inspecting-exports)):
 
-```powershell
+```bash
 python -m app.ordixa inspect --input examples/ordixa/exports/text-ids
 ```
 
@@ -257,8 +253,8 @@ a warning or an error according to `missing_customer`.
 
 | Sheet | Contents |
 | --- | --- |
-| Summary | order value, payments, refunds, signed adjustments, net received, amount reconciled to orders, outstanding balances, overpayments, exception counts, per-dataset row outcomes, processing metadata, input file fingerprints |
-| Exceptions | unpaid, partially paid, and overpaid orders plus paid orders with discrepancy flags, with amounts and transaction IDs |
+| Summary | a short guide to the sheets and row outcomes, order value, payments, refunds, signed adjustments, net received, amount reconciled to orders, outstanding balances, overpayments, exception counts, per-dataset row outcomes, processing metadata, input file fingerprints |
+| Exceptions | unpaid, partially paid, and overpaid orders plus paid orders with discrepancy flags, with amounts, a plain-language "What to check" note, and transaction IDs |
 | Rejected Rows | every issue: dataset, source file and row, record ID, outcome, whether it prevented processing, issue code, field, value, reason, original mapped values |
 | Full Ledger | every reconciled order with payment, refund, and adjustment breakdown, net paid, balances, status, flags, transaction IDs, last payment date, and source location |
 
@@ -278,6 +274,11 @@ CR) are prefixed with an apostrophe unless they are plain numbers such as
 32,767-character cell limit is truncated with a `[truncated]` marker (the CSV
 artifacts keep the full text). The workbook contains no formulas, external
 links, or macros.
+
+Presentation follows [BRAND.md](BRAND.md): graphite headers, tinted status
+chips with at least 7:1 contrast, wrapped free text with explicit row
+heights, and a print layout one page wide with the header row repeated on
+every page. Styling never changes a value.
 
 ## Run outputs and manifests
 
@@ -303,6 +304,11 @@ totals, and a `result_fingerprint` hashing the ledger, issues, and summary) from
 manifest holds no names, emails, phone numbers, or row values; it does hold
 input file names, so avoid putting personal data in file names.
 
+**Verification.** `verify_run()` in `app/ordixa/manifest.py` re-checks a run
+directory against its manifest: each output's SHA-256 and size, the CSV row
+counts, optionally each input's SHA-256, and the absence of workbook
+formulas. The demo calls it as its last step.
+
 **Reruns.** Re-running the same inputs creates a new directory; earlier runs
 are never overwritten. Two runs of identical inputs with the same profile and
 code produce an identical `result` section and byte-identical CSV artifacts.
@@ -310,8 +316,9 @@ code produce an identical `result` section and byte-identical CSV artifacts.
 ## Fictional fixtures
 
 [`examples/ordixa`](../examples/ordixa) contains a clean baseline and a
-problematic set, each split into August and September 2026 periods, with the
-expected results computed by hand. Tests compare implementation output with
+problematic set, each split into August and September 2026 periods, a
+text-identifier set, and the October 2026 demo month (CSV plus XLSX), all
+with expected results computed by hand. Tests compare implementation output with
 those hand-entered values in `tests/ordixa_golden.py`.
 
 ## Known limitations
@@ -350,11 +357,10 @@ them; store run directories with the same care as the exports. `output/` and
 repository. Operating guidance for real customer files is in
 [DATA_HANDLING.md](DATA_HANDLING.md).
 
-## Branches
+## History
 
-Phase 1A was developed on `feat/ordixa-profile-driven-imports`. Phase 1B is
-on `feat/ordixa-import-hardening`, branched from the final Phase 1A commit
-(`a5ef7a9`) and not merged. Phase 1A profiles work unchanged on Phase 1B.
+Phase 1A (profile-driven imports) and Phase 1B (import hardening) are merged
+into `main`. Phase 1A profiles work unchanged; their results are identical.
 
 ## Roadmap (not implemented)
 

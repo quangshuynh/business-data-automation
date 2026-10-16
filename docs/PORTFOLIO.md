@@ -1,5 +1,10 @@
 # Portfolio and Interview Guide
 
+> Scope: this guide describes the original Business Data Automation pipeline
+> (`main.py`, PostgreSQL, FastAPI, dashboard). The project has since grown into
+> Ordixa; see the [README](../README.md) and [ORDIXA.md](ORDIXA.md). Technical
+> detail for the original pipeline is in [ARCHITECTURE.md](ARCHITECTURE.md).
+
 ## One-line description
 
 An end-to-end Python reconciliation system that validates related CSV datasets, quarantines rejected records, reconciles payments and refunds, optionally upserts clean data into PostgreSQL, and serves results through FastAPI and a responsive dashboard.
