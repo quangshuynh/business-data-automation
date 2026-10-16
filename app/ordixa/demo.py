@@ -120,7 +120,7 @@ def main(argv=None):
     step(6, "Exceptions workbook")
     print(f"  open {relative(run_dir / WORKBOOK_NAME)}")
     print("  Summary - totals, exception counts, data quality, input fingerprints")
-    print("  Exceptions - unpaid, partial, and overpaid orders to follow up")
+    print("  Exceptions - orders to follow up, each with a note on what to check")
     print("  Rejected Rows - every rejected, warned, or excluded row and why")
     print("  Full Ledger - every reconciled order with its transactions")
 
