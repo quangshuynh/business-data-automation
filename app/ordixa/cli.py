@@ -15,6 +15,7 @@ from app.ordixa.inspection import (
 from app.ordixa.issues import InputError
 from app.ordixa.manifest import MANIFEST_NAME, WORKBOOK_NAME, write_run_outputs
 from app.ordixa.pipeline import ReconciliationIntegrityError, process
+from app.ordixa.preflight import format_preflight, preflight
 from app.ordixa.profile import ProfileError, load_profile
 
 EXIT_OK = 0
@@ -128,8 +129,23 @@ def build_parser():
         help="parent directory; each run creates a new run-<id> folder inside it",
     )
 
-    check = commands.add_parser("check-profile", help="validate a profile only")
+    check = commands.add_parser(
+        "check-profile",
+        help="validate a profile, optionally against a batch of exports",
+        description=(
+            "Validates the profile. With --input, also runs a read-only pilot "
+            "preflight: every missing file, missing column, unused or "
+            "personal-data column, and row-outcome count, without writing files "
+            "or printing cell values."
+        ),
+    )
     check.add_argument("--profile", required=True, type=Path, help="TOML profile")
+    check.add_argument(
+        "--input", type=Path, help="export directory to preflight against the profile"
+    )
+    check.add_argument(
+        "--json", action="store_true", help="print the preflight report as JSON"
+    )
 
     inspect = commands.add_parser(
         "inspect",
@@ -202,6 +218,31 @@ def inspect_command(args):
     return EXIT_INPUT if any(item["errors"] for item in reports) else EXIT_OK
 
 
+def check_profile_command(args):
+    """
+    executes the check-profile subcommand and its optional preflight
+    :param args: parsed arguments
+    :returns: exit code
+    """
+    if args.json and args.input is None:
+        report("--json needs --input", sys.stderr)
+        return EXIT_USAGE
+    profile = load_profile(args.profile)
+    if not args.json:
+        # keeps --json output parseable as a single document
+        report(f"profile {profile.name} {profile.version} is valid")
+    if args.input is None:
+        return EXIT_OK
+
+    warn_about_input_location(args.input)
+    result = preflight(profile, args.input)
+    if args.json:
+        print(json.dumps(result, indent=2, ensure_ascii=False))
+    else:
+        print(format_preflight(result))
+    return EXIT_INPUT if result["readiness"] == "blocked" else EXIT_OK
+
+
 def run_command(args):
     """
     executes the run subcommand
@@ -268,9 +309,7 @@ def main(argv=None):
         if args.command == "inspect":
             return inspect_command(args)
         if args.command == "check-profile":
-            profile = load_profile(args.profile)
-            report(f"profile {profile.name} {profile.version} is valid")
-            return EXIT_OK
+            return check_profile_command(args)
         return run_command(args)
     except ProfileError as error:
         report(str(error), sys.stderr)

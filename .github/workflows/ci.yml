@@ -41,6 +41,8 @@ jobs:
           python -m app.ordixa check-profile --profile examples/ordixa/profiles/harbor-lane.toml
           python -m app.ordixa check-profile --profile examples/ordixa/profiles/juniper-row.toml
           python -m app.ordixa inspect --input examples/ordixa/exports/text-ids
+          python -m app.ordixa check-profile --profile examples/ordixa/profiles/harbor-lane.toml --input examples/ordixa/exports/pilot/3-final-delivery
+          python -m app.ordixa check-profile --profile examples/ordixa/profiles/harbor-lane.toml --input examples/ordixa/exports/pilot/1-first-delivery && exit 1 || test $? -eq 3
           python -m app.ordixa run --profile examples/ordixa/profiles/harbor-lane.toml --input examples/ordixa/exports/problematic --out output/ci
           python -m app.ordixa run --profile examples/ordixa/profiles/juniper-row.toml --input examples/ordixa/exports/text-ids --out output/ci
           python -m app.ordixa.demo --out output/ci-demo

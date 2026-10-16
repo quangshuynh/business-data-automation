@@ -48,12 +48,12 @@ def file_sha256(path):
     return digest.hexdigest()
 
 
-def discover_inputs(input_dir, profile):
+def match_inputs(input_dir, profile):
     """
-    finds the files for each dataset role using the profile's file patterns
+    matches files to dataset roles and collects every discovery problem
     :param input_dir: directory containing customer exports
     :param profile: validated import profile
-    :returns: tuple of role-to-paths mapping and ignored file names
+    :returns: tuple of role-to-paths mapping, ignored file names, and problems
     """
     input_dir = Path(input_dir)
     if not input_dir.is_dir():
@@ -61,6 +61,7 @@ def discover_inputs(input_dir, profile):
 
     claimed = {}
     discovered = {}
+    problems = []
     for role, spec in profile.datasets.items():
         paths = set()
         for pattern in spec.files:
@@ -70,17 +71,18 @@ def discover_inputs(input_dir, profile):
                 ):
                     paths.add(path)
 
-        for path in paths:
+        for path in sorted(paths, key=lambda path: path.name):
             if path.name in claimed:
-                raise InputError(
+                problems.append(
                     f"{path.name} matches the file patterns of both the "
                     f"{claimed[path.name]} and {role} datasets; make the profile "
                     "patterns more specific"
                 )
+                continue
             claimed[path.name] = role
 
         if not paths and spec.required:
-            raise InputError(
+            problems.append(
                 f"no {role} file found in {input_dir} "
                 f"(expected a file matching {list(spec.files)})"
             )
@@ -91,6 +93,19 @@ def discover_inputs(input_dir, profile):
         for path in input_dir.iterdir()
         if path.is_file() and path.name not in claimed
     )
+    return discovered, ignored, problems
+
+
+def discover_inputs(input_dir, profile):
+    """
+    finds the files for each dataset role using the profile's file patterns
+    :param input_dir: directory containing customer exports
+    :param profile: validated import profile
+    :returns: tuple of role-to-paths mapping and ignored file names
+    """
+    discovered, ignored, problems = match_inputs(input_dir, profile)
+    if problems:
+        raise InputError(problems[0])
     return discovered, ignored
 
 
@@ -105,6 +120,22 @@ def clean_header(cell):
     return str(cell).replace("﻿", "").strip()
 
 
+def missing_columns(header, spec):
+    """
+    lists required mapped source columns absent from a header
+    :param header: header names from the file
+    :param spec: dataset specification
+    :returns: list of quoted column names, each with the closest header found
+    """
+    missing = []
+    for source in spec.source_columns():
+        if source in header or source in spec.optional_columns:
+            continue
+        hint = difflib.get_close_matches(source, [h for h in header if h], n=1)
+        missing.append(f"{source!r}" + (f" (found {hint[0]!r})" if hint else ""))
+    return missing
+
+
 def check_header(header, spec, path):
     """
     verifies that all required mapped source columns exist
@@ -117,13 +148,7 @@ def check_header(header, spec, path):
     if duplicates:
         raise InputError(f"{path.name} has duplicate column headers: {duplicates}")
 
-    missing = []
-    for source in spec.source_columns():
-        if source in header or source in spec.optional_columns:
-            continue
-        hint = difflib.get_close_matches(source, [h for h in header if h], n=1)
-        missing.append(f"{source!r}" + (f" (found {hint[0]!r})" if hint else ""))
-
+    missing = missing_columns(header, spec)
     if missing:
         raise InputError(
             f"{path.name} ({spec.role}) is missing required columns: "
