@@ -1,0 +1,14 @@
+Customer ID,First Name,Last Name,Email,Phone,Accepts Email Marketing,Tags
+7100101,Nora,Castellanos,nora.castellanos@example.com,555-010-0201,yes,repeat
+7100102,Theo,Brandt,theo.brandt@example.net,(555) 010-0202,no,wholesale
+7100103,Priya,Raman,priya.raman@example.org,555.010.0203,yes,
+7100104,Elias,Okonkwo,elias.okonkwo@example.com,555-010-0204,no,net-30 invoice
+7100105,Maren,Holt,maren.holt@example.com,555-010-0205,yes,
+7100106,Jonah,Feld,jonah.feld@example.org,555-010-0206,no,
+7100107,Lucia,Ferreira,lucia.ferreira@example.com,555-010-0207,yes,
+7100108,Sam,Whitaker,sam.whitaker@example.net,,no,
+7100109,Ingrid,Solberg,ingrid.solberg@example.com,555-010-0209,no,wholesale
+7100110,Rafael,Duarte,rafael.duarte@example.com,555-010-0210,yes,
+7100111,Hana,Moriyama,hana.moriyama@example.org,555-010-0211,yes,
+7100112,Morgan,Ellis,morgan.ellis.example.com,555-010-0212,no,
+7100110,Rafael,Duarte,r.duarte@example.net,555-010-0210,yes,updated email

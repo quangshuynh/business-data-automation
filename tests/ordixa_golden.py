@@ -74,3 +74,51 @@ TEXT_ID_TOTALS = {
     "outstanding_balance": D("130.00"),
     "overpayments": D("4.50"),
 }
+
+# examples/ordixa/exports/demo (October 2026) with profiles/harbor-lane.toml;
+# hand-computed in docs/DEMO.md
+DEMO_LEDGER = {
+    3001: (D("84.50"), D("84.50"), "paid", D("0.00"), D("0.00")),
+    3002: (D("1240.00"), D("620.00"), "partial", D("620.00"), D("0.00")),
+    3003: (D("36.00"), D("36.00"), "paid", D("0.00"), D("0.00")),
+    3004: (D("212.75"), D("0.00"), "unpaid", D("212.75"), D("0.00")),
+    3005: (D("149.00"), D("298.00"), "overpaid", D("0.00"), D("149.00")),
+    3006: (D("68.90"), D("56.90"), "partial", D("12.00"), D("0.00")),
+    3007: (D("455.00"), D("455.00"), "paid", D("0.00"), D("0.00")),
+    3008: (D("92.00"), D("92.00"), "paid", D("0.00"), D("0.00")),
+    3009: (D("1875.00"), D("1875.00"), "paid", D("0.00"), D("0.00")),
+    3010: (D("58.00"), D("0.00"), "unpaid", D("58.00"), D("0.00")),
+    3011: (D("120.00"), D("100.00"), "partial", D("20.00"), D("0.00")),
+    3012: (D("27.25"), D("27.25"), "paid", D("0.00"), D("0.00")),
+    3013: (D("310.00"), D("310.00"), "paid", D("0.00"), D("0.00")),
+    3014: (D("44.00"), D("44.00"), "paid", D("0.00"), D("0.00")),
+    3015: (D("65.00"), D("65.00"), "paid", D("0.00"), D("0.00")),
+}
+
+DEMO_TOTALS = {
+    "order_value": D("4837.40"),
+    "payments_received": D("4070.65"),
+    "refunds": D("12.00"),
+    "adjustments": D("5.00"),
+    "net_received": D("4063.65"),
+    "applied_to_orders": D("3914.65"),
+    "outstanding_balance": D("922.75"),
+    "overpayments": D("149.00"),
+}
+
+# source identifier -> issue code for every row the demo is designed to flag
+DEMO_ISSUES = {
+    ("customers", 9): ("7100108", "missing_phone"),
+    ("customers", 11): ("7100110", "conflicting_duplicate_id"),
+    ("customers", 13): ("7100112", "invalid_email"),
+    ("customers", 14): ("7100110", "conflicting_duplicate_id"),
+    ("orders", 11): ("#3010", "customer_rejected"),
+    ("orders", 15): ("#3014", "missing_customer_reference"),
+    ("orders", 17): ("#3015", "duplicate_row"),
+    ("orders", 18): ("#3016", "invalid_amount"),
+    ("payments", 5): ("PMT-281003", "duplicate_row"),
+    ("payments", 13): ("PMT-281011", "excluded_status"),
+    ("payments", 17): ("PMT-281015", "order_not_in_run"),
+    ("payments", 22): ("PMT-281020", "order_rejected"),
+    ("payments", 23): ("PMT-281021", "unmapped_status"),
+}

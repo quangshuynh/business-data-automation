@@ -22,8 +22,16 @@ exports/
 │   ├── payments_2026-08.csv
 │   └── payments_2026-09.csv
 ├── problematic/    the same structure, seeded with deliberate defects
+├── demo/           October 2026 customer demo: CSV storefront exports plus
+│                   an XLSX processor export, realistic mix of issues
 └── text-ids/       "Juniper Row Ceramics": opaque text identifiers
 ```
+
+`clean/`, `problematic/`, and `text-ids/` are compact test fixtures. `demo/`
+is the walkthrough dataset: one month of Harbor Lane trading where most rows
+are fine and a handful need attention, which is what a real review looks
+like. Its scenario and hand-computed results are in
+[docs/DEMO.md](../../docs/DEMO.md).
 
 Orders and payments share an order reference (`#1001`). Ordixa does not match
 payments to orders by date, amount, or customer; an export without a shared
