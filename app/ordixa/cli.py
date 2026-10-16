@@ -223,6 +223,19 @@ def run_command(args):
         report("no customers file provided; orders reconciled without customer data")
 
     run_dir, manifest = write_run_outputs(result, args.out, started_at)
+    report_run(result, run_dir, manifest)
+    return EXIT_OK
+
+
+def report_run(result, run_dir, manifest):
+    """
+    prints the headline outcome of a finished run
+    :param result: run result
+    :param run_dir: run directory
+    :param manifest: manifest dictionary
+    :returns: none
+    """
+    profile = result.profile
     summary = result.summary
     counts = summary["status_counts"]
     currency = profile.amounts.currency
@@ -241,7 +254,6 @@ def run_command(args):
     )
     report(f"workbook: {run_dir / WORKBOOK_NAME}")
     report(f"manifest: {run_dir / MANIFEST_NAME} ({manifest['result']['status']})")
-    return EXIT_OK
 
 
 def main(argv=None):
