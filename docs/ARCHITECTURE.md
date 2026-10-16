@@ -54,8 +54,10 @@ and the same reconciliation engine; it does not change `main.py` behavior.
 Within it, `profile.py` validates profiles, `adapters.py` reads files,
 `mapping.py` and `normalize.py` turn source rows into canonical rows,
 `validation.py` applies cross-row rules, `pipeline.py` reconciles and
-cross-checks totals, `workbook.py` and `manifest.py` write the run directory,
-and `inspection.py` backs the read-only `inspect` command.
+cross-checks totals, `workbook.py` and `manifest.py` write the run directory
+(and back the read-only `verify` command), `inspection.py` backs the read-only
+`inspect` command, and `preflight.py` backs `check-profile --input` by reusing
+discovery, header checks, and the pipeline in memory.
 
 `scripts/capture_screenshots.py` is a maintainer tool that regenerates the
 documentation images from a real demo run.
@@ -326,6 +328,9 @@ The suite covers:
 - The fictional demo dataset against hand-computed results, the guided demo
   command, run verification (including tampered outputs and inputs), and the
   workbook's contrast ratios, guidance text, fonts, and print layout
+- The pilot preflight and `verify` command, and the fictional pilot scenario
+  against hand-computed results, including a bounded two-month window and
+  scans that keep example data and tracked files fictional
 
 Database and API integration tests use isolated in-memory SQLite databases, so PostgreSQL and Docker are not required to run the standard suite. A live PostgreSQL/Compose smoke test remains a deliberate next step.
 

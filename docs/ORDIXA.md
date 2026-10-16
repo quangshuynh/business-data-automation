@@ -411,13 +411,16 @@ repository. Operating guidance for real customer files is in
 
 Phase 1A (profile-driven imports) and Phase 1B (import hardening) are merged
 into `main`. Phase 1A profiles work unchanged; their results are identical.
+Interval 4 added the pilot preflight, the `verify` command, and the
+[pilot kit](pilot/README.md); it did not change reconciliation results.
 
 ## Roadmap (not implemented)
 
 1. Starter profiles validated against real, consented sample exports.
 2. Per-dataset currency.
 3. Optional persisted import history so later payments can be matched to
-   earlier orders explicitly and auditably.
+   earlier orders explicitly and auditably, only if pilot evidence justifies
+   it ([cross-run assessment](pilot/CROSS_RUN_ASSESSMENT.md)).
 4. Workbook review loop: carry reviewer notes between runs.
 5. Packaging (`pip install` entry point) once the CLI stabilizes.
 
