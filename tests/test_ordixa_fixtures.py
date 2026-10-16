@@ -30,7 +30,7 @@ def plain_amount(text):
     return Decimal(text.replace("$", "").replace(",", ""))
 
 
-@pytest.mark.parametrize("fixture_set", ["clean", "problematic"])
+@pytest.mark.parametrize("fixture_set", ["clean", "problematic", "demo"])
 def test_fixtures_only_use_reserved_example_domains(fixture_set):
     """
     tests that fixture email addresses never use a real domain
@@ -42,7 +42,7 @@ def test_fixtures_only_use_reserved_example_domains(fixture_set):
             assert domain in RESERVED_DOMAINS | {""}, f"{path.name}: {domain}"
 
 
-@pytest.mark.parametrize("fixture_set", ["clean", "problematic"])
+@pytest.mark.parametrize("fixture_set", ["clean", "problematic", "demo"])
 def test_fixture_phone_numbers_use_fictional_range(fixture_set):
     """
     tests that North American fixture phone numbers use the 555-01xx range

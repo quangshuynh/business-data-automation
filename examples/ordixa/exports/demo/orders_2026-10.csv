@@ -1,0 +1,18 @@
+Name,Created at,Customer ID,Email,Financial Status,Currency,Total,Shipping Method
+#3001,2026-10-01 09:12:00 -0400,7100101,nora.castellanos@example.com,paid,USD,84.50,Standard
+#3002,2026-10-01 14:40:00 -0400,7100102,theo.brandt@example.net,partially_paid,USD,"1,240.00",Freight
+#3003,2026-10-02 08:05:00 -0400,7100103,priya.raman@example.org,paid,USD,36.00,Standard
+#3004,2026-10-03 11:30:00 -0400,7100104,elias.okonkwo@example.com,pending,USD,212.75,Standard
+#3005,2026-10-04 16:22:00 -0400,7100105,maren.holt@example.com,paid,USD,149.00,Express
+#3006,2026-10-05 10:48:00 -0400,7100106,jonah.feld@example.org,partially_refunded,USD,68.90,Standard
+#3007,2026-10-06 13:15:00 -0400,7100107,lucia.ferreira@example.com,paid,USD,455.00,Freight
+#3008,2026-10-07 09:57:00 -0400,7100108,sam.whitaker@example.net,paid,USD,92.00,Standard
+#3009,2026-10-08 15:03:00 -0400,7100109,ingrid.solberg@example.com,paid,USD,"1,875.00",Freight
+#3010,2026-10-09 12:26:00 -0400,7100110,rafael.duarte@example.com,pending,USD,58.00,Standard
+#3011,2026-10-10 17:41:00 -0400,7100111,hana.moriyama@example.org,paid,USD,120.00,Express
+#3012,2026-10-12 08:33:00 -0400,7100101,nora.castellanos@example.com,paid,USD,27.25,Standard
+#3013,2026-10-13 10:10:00 -0400,7100112,morgan.ellis.example.com,paid,USD,310.00,Standard
+#3014,2026-10-14 19:02:00 -0400,,guest.checkout@example.org,paid,USD,44.00,Pickup
+#3015,2026-10-15 11:47:00 -0400,7100105,maren.holt@example.com,paid,USD,65.00,Standard
+#3015,2026-10-15 11:47:00 -0400,7100105,maren.holt@example.com,paid,USD,65.00,Standard
+#3016,2026-10-16 09:20:00 -0400,7100103,priya.raman@example.org,paid,USD,1O5.00,Standard

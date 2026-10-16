@@ -43,6 +43,7 @@ jobs:
           python -m app.ordixa inspect --input examples/ordixa/exports/text-ids
           python -m app.ordixa run --profile examples/ordixa/profiles/harbor-lane.toml --input examples/ordixa/exports/problematic --out output/ci
           python -m app.ordixa run --profile examples/ordixa/profiles/juniper-row.toml --input examples/ordixa/exports/text-ids --out output/ci
+          python -m app.ordixa.demo --out output/ci-demo
           test "$(find output/ci -mindepth 1 -maxdepth 1 -name 'run-*' -type d | wc -l)" -eq 2
           test -z "$(find output/ci -mindepth 1 -maxdepth 1 -name '.run-*')"
           test -z "$(git status --porcelain)"

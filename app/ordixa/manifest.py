@@ -9,6 +9,7 @@ from decimal import Decimal
 from pathlib import Path
 
 import pandas as pd
+from openpyxl import load_workbook
 
 from app.ordixa import __version__
 from app.ordixa.adapters import file_sha256
@@ -327,3 +328,58 @@ def write_artifacts(result, run_dir, final_name, run_id, started_at):
         newline="\n",
     )
     return manifest
+
+
+def verify_run(run_dir, input_dir=None):
+    """
+    re-checks a finished run directory against its manifest
+
+    recomputes the SHA-256 and size of every listed output, the row counts of
+    the CSV artifacts, optionally the SHA-256 of every input file, and confirms
+    the workbook holds no formula cells
+    :param run_dir: run-<id> directory
+    :param input_dir: optional directory holding the original exports
+    :returns: list of (check description, passed) tuples
+    """
+    run_dir = Path(run_dir)
+    manifest = json.loads((run_dir / MANIFEST_NAME).read_text(encoding="utf-8"))
+    checks = []
+
+    for output in manifest["outputs"]:
+        path = run_dir / output["file"]
+        checks.append(
+            (
+                f"{output['file']} matches its recorded SHA-256 and size",
+                path.is_file()
+                and file_sha256(path) == output["sha256"]
+                and path.stat().st_size == output["bytes"],
+            )
+        )
+
+    for name, expected in manifest["result"]["artifact_rows"].items():
+        with (run_dir / name).open(newline="", encoding="utf-8") as handle:
+            rows = sum(1 for _ in csv.reader(handle)) - 1
+        checks.append(
+            (f"{name} has the recorded {expected} data rows", rows == expected)
+        )
+
+    if input_dir is not None:
+        for item in manifest["result"]["inputs"]:
+            path = Path(input_dir) / item["file"]
+            checks.append(
+                (
+                    f"input {item['file']} is unchanged since the run",
+                    path.is_file() and file_sha256(path) == item["sha256"],
+                )
+            )
+
+    workbook = load_workbook(run_dir / WORKBOOK_NAME)
+    formulas = sum(
+        1
+        for sheet in workbook
+        for row in sheet.iter_rows()
+        for cell in row
+        if cell.data_type == "f"
+    )
+    checks.append(("workbook contains no formulas", formulas == 0))
+    return checks

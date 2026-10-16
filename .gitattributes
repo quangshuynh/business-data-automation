@@ -12,3 +12,5 @@
 *.txt text eol=lf
 *.yaml text eol=lf
 *.yml text eol=lf
+*.xlsx binary
+*.png binary

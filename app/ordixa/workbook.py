@@ -1,4 +1,6 @@
+import math
 import re
+import textwrap
 from datetime import date, datetime
 from decimal import Decimal
 
@@ -13,23 +15,30 @@ from app.ordixa.normalize import identifier_sort_key
 
 SHEET_NAMES = ("Summary", "Exceptions", "Rejected Rows", "Full Ledger")
 
-# Ordixa palette: deep navy headers with white text, muted slate for labels;
-# every foreground/background pair below exceeds a 7:1 contrast ratio
-NAVY = "1F2A44"
-SLATE = "334155"
-RULE = "CBD5E1"
-WHITE = "FFFFFF"
+# Ordixa palette (docs/BRAND.md): graphite headers with off-white text and a
+# chartreuse rule, teal-graphite labels on white, tinted status chips; every
+# text/background pair below has at least a 7:1 contrast ratio (WCAG AAA)
+GRAPHITE = "111D22"
+SURFACE = "22343A"
+CHARTREUSE = "D9F17A"
+OFF_WHITE = "F2F4EF"
+AMBER = "E6AE65"
+MUTED = "3D4F55"
+RULE = "C9D1CC"
+FONT_NAME = "Calibri"
+MONO_FONT_NAME = "Consolas"
 STATUS_STYLES = {
-    "paid": ("Paid", "E6F4EA", "14532D"),
-    "partial": ("Partially paid", "FFF4D6", "713F12"),
-    "unpaid": ("Unpaid", "FDE2E1", "7F1D1D"),
-    "overpaid": ("Overpaid", "E3ECFA", "1E3A8A"),
+    "paid": ("Paid", "E2EFE6", "1E4D35"),
+    "partial": ("Partially paid", "F7E6C8", "5E3A0B"),
+    "unpaid": ("Unpaid", "F5DAD5", "7A2216"),
+    "overpaid": ("Overpaid", "DCEAED", "1B4855"),
 }
 SEVERITY_STYLES = {
-    "error": ("FDE2E1", "7F1D1D"),
-    "warning": ("FFF4D6", "713F12"),
-    "excluded": ("EEF2F7", "1F2A44"),
+    "error": ("F5DAD5", "7A2216"),
+    "warning": ("F7E6C8", "5E3A0B"),
+    "excluded": ("E9ECE8", SURFACE),
 }
+TAB_COLORS = dict(zip(SHEET_NAMES, (GRAPHITE, AMBER, "B5523F", SURFACE)))
 
 MONEY_FORMAT = "#,##0.00;-#,##0.00"
 DATE_FORMAT = "yyyy-mm-dd"
@@ -45,12 +54,30 @@ TRUNCATION_MARK = " [truncated]"
 TEXT_COLUMNS = {"order_id", "customer_id", "record_id", "order_ref"}
 PLAIN_NUMBER = re.compile(r"^[-+]?[$€£¥]?\s?[0-9][0-9.,\s]*$")
 
-HEADER_FONT = Font(bold=True, color=WHITE)
-HEADER_FILL = PatternFill("solid", fgColor=NAVY)
-TITLE_FONT = Font(bold=True, size=16, color=NAVY)
-SECTION_FONT = Font(bold=True, size=12, color=NAVY)
-LABEL_FONT = Font(color=SLATE)
+HEADER_FONT = Font(name=FONT_NAME, bold=True, color=OFF_WHITE)
+HEADER_FILL = PatternFill("solid", fgColor=GRAPHITE)
+HEADER_RULE = Border(bottom=Side(style="medium", color=CHARTREUSE))
+BRAND_FONT = Font(name=FONT_NAME, bold=True, size=20, color=CHARTREUSE)
+TITLE_FONT = Font(name=FONT_NAME, size=13, color=OFF_WHITE)
+SECTION_FONT = Font(name=FONT_NAME, bold=True, size=12, color=GRAPHITE)
+LABEL_FONT = Font(name=FONT_NAME, color=MUTED)
+VALUE_FONT = Font(name=FONT_NAME, color=GRAPHITE)
+BOLD_VALUE_FONT = Font(name=FONT_NAME, bold=True, color=GRAPHITE)
+HASH_FONT = Font(name=MONO_FONT_NAME, size=9, color=MUTED)
 BOTTOM_RULE = Border(bottom=Side(style="thin", color=RULE))
+WRAP = Alignment(vertical="top", wrap_text=True)
+TOP = Alignment(vertical="top")
+# figures and dates sit one character in from the right edge of their column
+FIGURE = Alignment(horizontal="right", vertical="top", indent=1)
+# long free-text columns wrap at these widths instead of stretching the sheet
+WRAPPED_COLUMNS = {
+    "review_note": 46,
+    "message": 58,
+    "discrepancy_flags": 34,
+    "transaction_refs": 28,
+    "original_values": 60,
+}
+LINE_HEIGHT = 15
 
 LEDGER_HEADERS = {
     "order_ref": "Order",
@@ -85,11 +112,17 @@ EXCEPTION_COLUMNS = [
     "net_paid",
     "outstanding_balance",
     "overpayment_amount",
+    "review_note",
     "transaction_count",
     "transaction_refs",
     "discrepancy_flags",
     "source_location",
 ]
+EXCEPTION_HEADERS = {
+    **LEDGER_HEADERS,
+    "exception_type": "Exception",
+    "review_note": "What to check",
+}
 EXCEPTION_ORDER = {
     "Unpaid": 0,
     "Partially paid": 1,
@@ -105,6 +138,31 @@ MONEY_COLUMNS = {
     "balance_due",
     "outstanding_balance",
     "overpayment_amount",
+}
+# right-aligned headers so they sit above their figures
+NUMERIC_COLUMNS = MONEY_COLUMNS | {
+    "transaction_count",
+    "row",
+    "order_date",
+    "last_payment_date",
+}
+# plain-language guidance shown beside each exception on the Exceptions sheet
+REVIEW_NOTES = {
+    "Unpaid": (
+        "No counted payment. Confirm whether the order was invoiced, cancelled, "
+        "or paid outside these exports."
+    ),
+    "Partially paid": (
+        "Net received is below the order total. Collect the balance, or confirm "
+        "the refund or discount that explains it."
+    ),
+    "Overpaid": (
+        "More was received than the order total. Check for a duplicate charge, "
+        "then refund or credit the difference."
+    ),
+    "Paid with discrepancy": (
+        "Amounts match the order total, but a discrepancy flag needs a look."
+    ),
 }
 
 
@@ -219,6 +277,24 @@ def write_cell(sheet, row, column, value, column_name=None):
     return cell
 
 
+def style_header(cell, numeric=False):
+    """
+    applies the graphite header style with its chartreuse rule
+    :param cell: header cell
+    :param numeric: right-align the header above a column of figures
+    :returns: none
+    """
+    cell.font = HEADER_FONT
+    cell.fill = HEADER_FILL
+    cell.border = HEADER_RULE
+    cell.alignment = Alignment(
+        horizontal="right" if numeric else "left",
+        vertical="center",
+        wrap_text=True,
+        indent=1 if numeric else 0,
+    )
+
+
 def write_table(sheet, start_row, columns, headers, rows):
     """
     writes a header row and records as a filterable table
@@ -229,22 +305,30 @@ def write_table(sheet, start_row, columns, headers, rows):
     :param rows: list of dictionaries keyed by canonical column
     :returns: last row written
     """
-    for index, header in enumerate(headers, start=1):
+    for index, (column, header) in enumerate(zip(columns, headers), start=1):
         cell = sheet.cell(row=start_row, column=index, value=header)
-        cell.font = HEADER_FONT
-        cell.fill = HEADER_FILL
-        cell.alignment = Alignment(vertical="center", wrap_text=True)
+        style_header(cell, numeric=column in NUMERIC_COLUMNS)
+    sheet.row_dimensions[start_row].height = 30
 
     row_number = start_row
     for record in rows:
         row_number += 1
         for index, column in enumerate(columns, start=1):
             cell = write_cell(sheet, row_number, index, record.get(column), column)
+            if column in WRAPPED_COLUMNS:
+                cell.alignment = WRAP
+            elif cell.alignment.horizontal == "right" or (
+                isinstance(cell.value, (int, float, Decimal, date))
+                and not isinstance(cell.value, bool)
+            ):
+                cell.alignment = FIGURE
+            else:
+                cell.alignment = TOP
             if column == "financial_status" and record.get(column) in STATUS_STYLES:
                 label, fill, color = STATUS_STYLES[record[column]]
                 cell.value = label
                 cell.fill = PatternFill("solid", fgColor=fill)
-                cell.font = Font(color=color, bold=True)
+                cell.font = Font(name=FONT_NAME, color=color, bold=True)
 
     last_column = get_column_letter(len(columns))
     sheet.auto_filter.ref = f"A{start_row}:{last_column}{max(row_number, start_row)}"
@@ -254,10 +338,12 @@ def write_table(sheet, start_row, columns, headers, rows):
     return row_number
 
 
-def fit_columns(sheet, minimum=9, maximum=60):
+def fit_columns(sheet, columns=(), minimum=9, maximum=60):
     """
-    sizes columns to their content within readable limits
+    sizes columns to their content within readable limits; long free-text
+    columns get a fixed width and wrap instead
     :param sheet: worksheet
+    :param columns: canonical column names in sheet order, for wrapped widths
     :param minimum: smallest width
     :param maximum: largest width
     :returns: none
@@ -273,10 +359,68 @@ def fit_columns(sheet, minimum=9, maximum=60):
                 length = 11
             else:
                 length = max(len(line) for line in str(cell.value).splitlines() or [""])
+            if cell.font is not None and cell.font.b:
+                # bold text is wider than regular body text
+                length = int(length * 1.1) + 1
             widths[cell.column_letter] = max(widths.get(cell.column_letter, 0), length)
 
     for letter, width in widths.items():
         sheet.column_dimensions[letter].width = max(minimum, min(maximum, width + 2))
+    for index, column in enumerate(columns, start=1):
+        if column in WRAPPED_COLUMNS:
+            letter = get_column_letter(index)
+            sheet.column_dimensions[letter].width = min(
+                WRAPPED_COLUMNS[column], max(minimum, widths.get(letter, 0) + 2)
+            )
+
+
+def fit_rows(sheet, columns, start_row=2):
+    """
+    sets row heights for wrapped text, which spreadsheet applications do not
+    reliably grow on their own
+    :param sheet: worksheet whose column widths are already set
+    :param columns: canonical column names in sheet order
+    :param start_row: first data row
+    :returns: none
+    """
+    wrapped = [
+        (index, sheet.column_dimensions[get_column_letter(index)].width)
+        for index, column in enumerate(columns, start=1)
+        if column in WRAPPED_COLUMNS
+    ]
+    for row_number in range(start_row, sheet.max_row + 1):
+        lines = 1
+        for index, width in wrapped:
+            value = sheet.cell(row=row_number, column=index).value
+            if isinstance(value, str) and len(value) > width - 2:
+                # body text averages narrower than the width unit's "0"
+                chars = max(1, math.floor(width * 1.2) - 2)
+                lines = max(lines, len(textwrap.wrap(value, chars)) or 1)
+        if lines > 1:
+            sheet.row_dimensions[row_number].height = LINE_HEIGHT * lines + 2
+
+
+def set_print_layout(sheet, landscape=True, title_rows=None):
+    """
+    prepares a sheet for printing: one page wide, repeated headers, footer
+    :param sheet: worksheet
+    :param landscape: print in landscape orientation
+    :param title_rows: rows repeated on every printed page, such as "1:1"
+    :returns: none
+    """
+    sheet.page_setup.orientation = "landscape" if landscape else "portrait"
+    sheet.page_setup.fitToWidth = 1
+    sheet.page_setup.fitToHeight = 0
+    sheet.sheet_properties.pageSetUpPr.fitToPage = True
+    sheet.page_margins.left = sheet.page_margins.right = 0.4
+    sheet.page_margins.top = sheet.page_margins.bottom = 0.5
+    if title_rows:
+        sheet.print_title_rows = title_rows
+    sheet.oddFooter.left.text = "Ordixa"
+    sheet.oddFooter.left.size = 8
+    sheet.oddFooter.right.text = "&A - page &P of &N"
+    sheet.oddFooter.right.size = 8
+    sheet.sheet_properties.tabColor = TAB_COLORS[sheet.title]
 
 
 def exception_type(row):
@@ -292,7 +436,7 @@ def exception_type(row):
 
 def build_summary_sheet(sheet, result, metadata):
     """
-    writes headline totals, quality counts, and processing metadata
+    writes headline totals, quality counts, guidance, and processing metadata
     :param sheet: worksheet
     :param result: run result
     :param metadata: execution metadata for the run
@@ -301,67 +445,110 @@ def build_summary_sheet(sheet, result, metadata):
     summary = result.summary
     profile = result.profile
     currency = profile.amounts.currency
+    width = 6
 
-    sheet["A1"] = "Ordixa reconciliation summary"
-    sheet["A1"].font = TITLE_FONT
-    sheet["A2"] = safe_text(
-        f"Profile {profile.name} v{profile.version} - amounts in {currency}"
+    for brand_row in (1, 2):
+        for column in range(1, width + 1):
+            sheet.cell(row=brand_row, column=column).fill = HEADER_FILL
+    for column in range(1, width + 1):
+        sheet.cell(row=2, column=column).border = HEADER_RULE
+    sheet["A1"] = "Ordixa"
+    sheet["A1"].font = BRAND_FONT
+    sheet["A1"].alignment = Alignment(vertical="bottom")
+    sheet["A2"] = "Reconciliation summary"
+    sheet["A2"].font = TITLE_FONT
+    sheet["A2"].alignment = Alignment(vertical="top")
+    sheet.row_dimensions[1].height = 32
+    sheet.row_dimensions[2].height = 22
+    sheet["A3"] = safe_text(
+        f"Profile {profile.name} v{profile.version} - amounts in {currency} - "
+        f"generated {metadata['generated_at']} UTC"
     )
-    sheet["A2"].font = LABEL_FONT
-    row = 4
+    sheet["A3"].font = LABEL_FONT
+    sheet.row_dimensions[3].height = 20
+    row = 5
 
     def section(title):
         nonlocal row
-        cell = sheet.cell(row=row, column=1, value=title)
-        cell.font = SECTION_FONT
-        cell.border = BOTTOM_RULE
-        sheet.cell(row=row, column=2).border = BOTTOM_RULE
+        sheet.cell(row=row, column=1, value=title).font = SECTION_FONT
+        for column in range(1, width + 1):
+            sheet.cell(row=row, column=column).border = BOTTOM_RULE
+        sheet.row_dimensions[row].height = 20
         row += 1
 
-    def line(label, value, number_format=None):
+    def line(label, value, number_format=None, emphasis=False):
         nonlocal row
         sheet.cell(row=row, column=1, value=label).font = LABEL_FONT
         cell = write_cell(sheet, row, 2, value)
         if number_format:
             cell.number_format = number_format
-        cell.alignment = Alignment(horizontal="right")
+        cell.font = BOLD_VALUE_FONT if emphasis else VALUE_FONT
+        # figures align right; text runs left into the empty columns beside it
+        if isinstance(value, (int, float, Decimal)) and not isinstance(value, bool):
+            cell.alignment = Alignment(horizontal="right")
+        row += 1
+
+    def note(label, text):
+        nonlocal row
+        sheet.cell(row=row, column=1, value=label).font = LABEL_FONT
+        sheet.cell(row=row, column=2, value=text).font = VALUE_FONT
+        row += 1
+
+    def table_header(headers, numeric_from):
+        nonlocal row
+        for index, header in enumerate(headers, start=1):
+            style_header(
+                sheet.cell(row=row, column=index, value=header),
+                numeric=index >= numeric_from,
+            )
         row += 1
 
     section("Financial totals")
     line("Orders reconciled", summary["orders"], INTEGER_FORMAT)
-    line("Order value", summary["order_value"])
+    line("Order value", summary["order_value"], emphasis=True)
     line("Transactions counted", summary["transactions"], INTEGER_FORMAT)
     line("Payments received", summary["payments_received"])
     line("Refunds (deducted)", summary["refunds"])
     line("Adjustments (signed)", summary["adjustments"])
-    line("Net received", summary["net_received"])
+    line("Net received", summary["net_received"], emphasis=True)
     line("Reconciled to orders", summary["applied_to_orders"])
-    line("Outstanding balances", summary["outstanding_balance"])
-    line("Overpayments", summary["overpayments"])
+    line("Outstanding balances", summary["outstanding_balance"], emphasis=True)
+    line("Overpayments", summary["overpayments"], emphasis=True)
     row += 1
 
     section("Exceptions")
     for status in ("unpaid", "partial", "overpaid"):
         line(f"{status_label(status)} orders", summary["status_counts"][status])
+        _, fill, color = STATUS_STYLES[status]
+        label_cell = sheet.cell(row=row - 1, column=1)
+        label_cell.fill = PatternFill("solid", fgColor=fill)
+        label_cell.font = Font(name=FONT_NAME, color=color, bold=True)
     line("Orders with discrepancy flags", summary["flagged_orders"])
-    line("Orders needing review", summary["exception_orders"])
+    line("Orders needing review", summary["exception_orders"], emphasis=True)
     line("Paid orders", summary["status_counts"]["paid"])
     row += 1
 
-    section("Data quality")
-    headers = [
-        "Dataset",
-        "Rows read",
-        "Accepted",
-        "With warnings",
-        "Rejected",
-        "Excluded",
-    ]
-    for index, header in enumerate(headers, start=1):
-        cell = sheet.cell(row=row, column=index, value=header)
-        cell.font = HEADER_FONT
-        cell.fill = HEADER_FILL
+    section("Reading this workbook")
+    note("Exceptions sheet", "Orders to follow up, each with a note on what to check.")
+    note(
+        "Rejected Rows sheet", "Every row not used as-is, with its source row and why."
+    )
+    note("Full Ledger sheet", "Every reconciled order with its payments and refunds.")
+    note("Rejected", "Not used in any total until the source export is fixed.")
+    note(
+        "Kept with warning", "Used in the totals; a detail such as contact data is off."
+    )
+    note(
+        "Excluded by profile", "Deliberately ignored, such as a declined card payment."
+    )
+    note("Calculations", "Exact decimal arithmetic by Ordixa; no spreadsheet formulas.")
     row += 1
+
+    section("Data quality")
+    table_header(
+        ["Dataset", "Rows read", "Accepted", "With warnings", "Rejected", "Excluded"],
+        numeric_from=2,
+    )
     for dataset, counts in result.counts.items():
         values = [
             dataset.title(),
@@ -372,7 +559,7 @@ def build_summary_sheet(sheet, result, metadata):
             counts["excluded"],
         ]
         for index, value in enumerate(values, start=1):
-            write_cell(sheet, row, index, value)
+            write_cell(sheet, row, index, value).font = VALUE_FONT
         row += 1
     row += 1
 
@@ -391,35 +578,38 @@ def build_summary_sheet(sheet, result, metadata):
     row += 1
 
     section("Input files")
-    for index, header in enumerate(["Role", "File", "Rows", "SHA-256"], start=1):
-        cell = sheet.cell(row=row, column=index, value=header)
-        cell.font = HEADER_FONT
-        cell.fill = HEADER_FILL
-    row += 1
+    table_header(["Role", "File", "Rows", "SHA-256", "", ""], numeric_from=3)
+    sheet.cell(row=row - 1, column=4).alignment = Alignment(horizontal="left", indent=1)
     for input_file in result.inputs:
         for index, value in enumerate(
             [input_file.role, input_file.name, input_file.data_rows, input_file.sha256],
             start=1,
         ):
-            write_cell(sheet, row, index, value)
+            cell = write_cell(sheet, row, index, value)
+            cell.font = HASH_FONT if index == 4 else VALUE_FONT
+            if index == 3:
+                cell.alignment = Alignment(horizontal="right", indent=1)
+            elif index == 4:
+                cell.alignment = Alignment(indent=1)
         row += 1
 
-    fit_columns(sheet, maximum=40)
-    sheet.column_dimensions["A"].width = 32
-    sheet.column_dimensions["B"].width = 26
+    for letter, column_width in zip("ABCDEF", (34, 24, 13, 15, 14, 21)):
+        sheet.column_dimensions[letter].width = column_width
     sheet.sheet_view.showGridLines = False
+    set_print_layout(sheet, landscape=False)
 
 
 def build_exceptions_sheet(sheet, result):
     """
-    writes orders that need follow-up
+    writes orders that need follow-up with a note on what to check
     :param sheet: worksheet
     :param result: run result
     :returns: none
     """
     rows = []
     for row in result.exceptions.to_dict(orient="records"):
-        rows.append({**row, "exception_type": exception_type(row)})
+        kind = exception_type(row)
+        rows.append({**row, "exception_type": kind, "review_note": REVIEW_NOTES[kind]})
     rows.sort(
         key=lambda item: (
             EXCEPTION_ORDER[item["exception_type"]],
@@ -427,11 +617,17 @@ def build_exceptions_sheet(sheet, result):
         )
     )
 
-    headers = ["Exception"] + [
-        LEDGER_HEADERS[column] for column in EXCEPTION_COLUMNS[1:]
-    ]
+    headers = [EXCEPTION_HEADERS[column] for column in EXCEPTION_COLUMNS]
     write_table(sheet, 1, EXCEPTION_COLUMNS, headers, rows)
-    fit_columns(sheet)
+    for row_number, record in enumerate(rows, start=2):
+        if record["financial_status"] in STATUS_STYLES:
+            _, _, color = STATUS_STYLES[record["financial_status"]]
+            sheet.cell(row=row_number, column=1).font = Font(
+                name=FONT_NAME, color=color, bold=True
+            )
+    fit_columns(sheet, EXCEPTION_COLUMNS)
+    fit_rows(sheet, EXCEPTION_COLUMNS)
+    set_print_layout(sheet, title_rows="1:1")
 
 
 def build_rejected_rows_sheet(sheet, result):
@@ -489,9 +685,11 @@ def build_rejected_rows_sheet(sheet, result):
         fill, color = SEVERITY_STYLES[issue.severity]
         cell = sheet.cell(row=row_number, column=5)
         cell.fill = PatternFill("solid", fgColor=fill)
-        cell.font = Font(color=color, bold=True)
+        cell.font = Font(name=FONT_NAME, color=color, bold=True)
 
-    fit_columns(sheet, maximum=70)
+    fit_columns(sheet, columns, maximum=70)
+    fit_rows(sheet, columns)
+    set_print_layout(sheet, title_rows="1:1")
 
 
 def build_ledger_sheet(sheet, result):
@@ -504,7 +702,9 @@ def build_ledger_sheet(sheet, result):
     columns = list(LEDGER_HEADERS)
     rows = result.ledger.to_dict(orient="records")
     write_table(sheet, 1, columns, [LEDGER_HEADERS[c] for c in columns], rows)
-    fit_columns(sheet)
+    fit_columns(sheet, columns)
+    fit_rows(sheet, columns)
+    set_print_layout(sheet, title_rows="1:1")
 
 
 def write_workbook(result, path, metadata):
