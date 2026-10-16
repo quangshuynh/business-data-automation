@@ -15,3 +15,5 @@ examples
 output
 tests
 requirements-dev.txt
+customer-data
+.run-*.partial

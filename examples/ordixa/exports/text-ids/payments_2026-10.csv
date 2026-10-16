@@ -1,0 +1,7 @@
+Payment Ref,Order Number,Paid On,Kind,State,Gross,Currency
+PAY_8F3K2,ORD-2026-00142,2026-10-01,payment,paid,$250.00,USD
+PAY_8F3K3,ORD-2026-00143,2026-10-02,payment,partial,$50.00,USD
+PAY_9A001,INV-A1049,2026-10-03,payment,paid,"$1,200.00",USD
+PAY_9A002,INV-A1049,2026-10-06,refund,refunded,$100.00,USD
+PAY_9A003,SQ-2026-10-001,2026-10-04,payment,paid,$50.00,USD
+PAY_9A004,ORD-2026-00009,2026-10-05,payment,paid,$19.99,USD

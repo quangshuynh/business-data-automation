@@ -1,6 +1,6 @@
 from collections import defaultdict
 
-from app.ordixa.issues import ERROR
+from app.ordixa.issues import ERROR, WARNING
 from app.ordixa.mapping import PRIMARY_KEYS
 from app.ordixa.profile import CANONICAL_STATUSES, CANONICAL_TRANSACTION_TYPES
 from app.validators.validate import get_payment_validation_errors
@@ -24,13 +24,98 @@ def signature(record):
     return tuple(sorted((key, repr(value)) for key, value in record.fields.items()))
 
 
+def reject_collisions(identifier, group, key):
+    """
+    rejects rows whose differently spelled identifiers normalize to one value
+
+    #1001 and #01001 both become 1001 under numeric identifiers; there is no
+    way to tell whether they are one record exported twice or two records, so
+    none of them are used
+    :param identifier: canonical identifier shared by the group
+    :param group: records sharing the identifier
+    :param key: identifier field
+    :returns: true when the group was rejected as a collision
+    """
+    spellings = sorted({record.spelling for record in group})
+    if len(spellings) < 2:
+        return False
+
+    shown = ", ".join(repr(spelling) for spelling in spellings)
+    places = ", ".join(location(record) for record in group)
+    for record in group:
+        record.add_issue(
+            ERROR,
+            "identifier_collision",
+            f"{shown} all normalize to identifier {identifier} ({places}); "
+            "different spellings may be different records, so none were used",
+            key,
+            record.ref,
+        )
+    return True
+
+
+def flag_case_variants(groups, key):
+    """
+    warns about text identifiers that differ only in letter case
+
+    identifiers are case-sensitive and are never folded; the warning lets a
+    reviewer confirm that INV-A1 and inv-a1 really are different records
+    :param groups: mapping of canonical identifier to records
+    :param key: identifier field
+    :returns: none
+    """
+    variants = defaultdict(list)
+    for identifier in groups:
+        if isinstance(identifier, str):
+            variants[identifier.casefold()].append(identifier)
+
+    for spellings in variants.values():
+        if len(spellings) < 2:
+            continue
+        shown = ", ".join(repr(spelling) for spelling in sorted(spellings))
+        for identifier in spellings:
+            for record in groups[identifier]:
+                record.add_issue(
+                    WARNING,
+                    "identifier_case_variant",
+                    f"identifiers {shown} differ only in letter case; they are "
+                    "treated as different records",
+                    key,
+                    record.ref,
+                )
+
+
+def case_hint(identifier, known):
+    """
+    explains a failed match that differs only in letter case
+    :param identifier: identifier that was not found
+    :param known: identifiers that exist
+    :returns: hint text, empty when there is no case-only match
+    """
+    if not isinstance(identifier, str):
+        return ""
+    matches = sorted(
+        candidate
+        for candidate in known
+        if isinstance(candidate, str)
+        and candidate != identifier
+        and candidate.casefold() == identifier.casefold()
+    )
+    if not matches:
+        return ""
+    return (
+        f" ({matches[0]!r} differs only in letter case; identifiers are case-sensitive)"
+    )
+
+
 def resolve_duplicates(records, dataset):
     """
     applies the deterministic duplicate-identifier policy to one dataset
 
     identical rows sharing an identifier are counted once (the first in file
-    and row order is kept); rows sharing an identifier with different content
-    are all rejected because there is no safe way to choose between them
+    and row order is kept); rows sharing an identifier with different content,
+    or spelling it differently before normalization, are all rejected because
+    there is no safe way to choose between them
     :param records: canonical records for one dataset in file and row order
     :param dataset: dataset role
     :returns: none
@@ -42,8 +127,10 @@ def resolve_duplicates(records, dataset):
         if identifier is not None:
             groups[identifier].append(record)
 
-    for group in groups.values():
-        if len(group) < 2:
+    flag_case_variants(groups, key)
+
+    for identifier, group in groups.items():
+        if len(group) < 2 or reject_collisions(identifier, group, key):
             continue
 
         if len({signature(record) for record in group}) == 1:
@@ -114,7 +201,8 @@ def check_customer_references(orders, customers, profile):
         else:
             code = "customer_not_found"
             message = (
-                f"customer {customer_id} is not in the customers file; "
+                f"customer {customer_id} is not in the customers file"
+                f"{case_hint(customer_id, accepted)}; "
                 "order reconciled without customer details"
             )
         if profile.missing_customer == ERROR:
@@ -165,6 +253,8 @@ def check_payment_rules(payments, orders):
             code, explanation = PAYMENT_RULE_CODES.get(
                 message, ("invalid_payment", message)
             )
+            if code == "order_not_in_run":
+                explanation += case_hint(payment.fields["order_id"], accepted)
             payment.add_issue(
                 ERROR,
                 code,

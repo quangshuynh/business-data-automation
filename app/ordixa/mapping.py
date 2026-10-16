@@ -4,6 +4,7 @@ from app.ordixa.issues import ERROR, EXCLUDED, WARNING, Issue
 from app.ordixa.normalize import (
     NormalizationError,
     display_value,
+    identifier_spelling,
     is_blank,
     parse_amount,
     parse_currency,
@@ -31,6 +32,9 @@ class Record:
     original_values: str
     fields: dict = field(default_factory=dict)
     issues: list = field(default_factory=list)
+    # primary identifier as spelled in the export, used to detect two different
+    # spellings that normalize to the same canonical identifier
+    spelling: str = ""
 
     @property
     def rejected(self):
@@ -136,6 +140,19 @@ def map_value(record, spec, canonical, value):
     return mapped
 
 
+def identifier_parser(spec, profile, canonical):
+    """
+    builds the parser for one identifier column using the profile's rules
+    :param spec: dataset specification
+    :param profile: validated import profile
+    :param canonical: customer_id, order_id, or payment_id
+    :returns: function converting a raw value into a canonical identifier
+    """
+    prefix = spec.id_prefixes.get(canonical)
+    mode = profile.identifier_mode(canonical)
+    return lambda value: parse_identifier(value, prefix, mode)
+
+
 def normalize_field(record, canonical, severity, parser, value):
     """
     runs a normalization function and records failures as issues
@@ -159,11 +176,12 @@ def normalize_field(record, canonical, severity, parser, value):
         return None
 
 
-def build_customer(record, spec, values):
+def build_customer(record, spec, profile, values):
     """
     maps customer fields; contact problems are warnings, never rejections
     :param record: record being built
     :param spec: dataset specification
+    :param profile: validated import profile
     :param values: source row values
     :returns: none
     """
@@ -172,7 +190,7 @@ def build_customer(record, spec, values):
         record,
         "customer_id",
         ERROR,
-        lambda value: parse_identifier(value, spec.id_prefixes.get("customer_id")),
+        identifier_parser(spec, profile, "customer_id"),
         raw_value(values, spec, "customer_id"),
     )
 
@@ -259,7 +277,7 @@ def build_order(record, spec, profile, values):
         record,
         "order_id",
         ERROR,
-        lambda value: parse_identifier(value, spec.id_prefixes.get("order_id")),
+        identifier_parser(spec, profile, "order_id"),
         raw_value(values, spec, "order_id"),
     )
     fields["date"] = normalize_field(
@@ -300,9 +318,7 @@ def build_order(record, spec, profile, values):
                 record,
                 "customer_id",
                 profile.missing_customer,
-                lambda value: parse_identifier(
-                    value, spec.id_prefixes.get("customer_id")
-                ),
+                identifier_parser(spec, profile, "customer_id"),
                 raw_customer,
             )
 
@@ -323,7 +339,7 @@ def build_payment(record, spec, profile, values):
         record,
         "payment_id",
         ERROR,
-        lambda value: parse_identifier(value, spec.id_prefixes.get("payment_id")),
+        identifier_parser(spec, profile, "payment_id"),
         raw_value(values, spec, "payment_id"),
     )
     raw_order = raw_value(values, spec, "order_id")
@@ -331,7 +347,7 @@ def build_payment(record, spec, profile, values):
         record,
         "order_id",
         ERROR,
-        lambda value: parse_identifier(value, spec.id_prefixes.get("order_id")),
+        identifier_parser(spec, profile, "order_id"),
         raw_order,
     )
     fields["order_ref"] = display_value(raw_order)
@@ -403,9 +419,7 @@ def build_payment(record, spec, profile, values):
 
 
 BUILDERS = {
-    "customers": lambda record, spec, profile, values: build_customer(
-        record, spec, values
-    ),
+    "customers": build_customer,
     "orders": build_order,
     "payments": build_payment,
 }
@@ -439,12 +453,14 @@ def canonicalize(table, spec, profile):
             if name in values
         )
         primary = PRIMARY_KEYS[spec.role]
+        raw_primary = raw_value(values, spec, primary)
         record = Record(
             dataset=spec.role,
             file=table.path.name,
             row=source_row.row,
-            ref=display_value(raw_value(values, spec, primary)),
+            ref=display_value(raw_primary),
             original_values=original,
+            spelling=identifier_spelling(raw_primary),
         )
         BUILDERS[spec.role](record, spec, profile, values)
         records.append(record)

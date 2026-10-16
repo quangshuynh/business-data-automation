@@ -55,3 +55,22 @@ PROBLEMATIC_COUNTS = {
     "orders": {"rows": 15, "accepted": 7, "rejected": 8, "excluded": 0},
     "payments": {"rows": 20, "accepted": 8, "rejected": 11, "excluded": 1},
 }
+
+# examples/ordixa/exports/text-ids with profiles/juniper-row.toml
+TEXT_ID_LEDGER = {
+    "INV-A1049": (D("1200.00"), D("1100.00"), "partial", D("100.00"), D("0.00")),
+    "ORD-2026-00009": (D("19.99"), D("19.99"), "paid", D("0.00"), D("0.00")),
+    "ORD-2026-00142": (D("250.00"), D("250.00"), "paid", D("0.00"), D("0.00")),
+    "ORD-2026-00143": (D("80.00"), D("50.00"), "partial", D("30.00"), D("0.00")),
+    "SQ-2026-10-001": (D("45.50"), D("50.00"), "overpaid", D("0.00"), D("4.50")),
+}
+
+TEXT_ID_TOTALS = {
+    "order_value": D("1595.49"),
+    "payments_received": D("1569.99"),
+    "refunds": D("100.00"),
+    "net_received": D("1469.99"),
+    "applied_to_orders": D("1465.49"),
+    "outstanding_balance": D("130.00"),
+    "overpayments": D("4.50"),
+}

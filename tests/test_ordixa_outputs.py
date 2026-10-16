@@ -154,7 +154,9 @@ def test_ledger_sheet_uses_numeric_and_date_cells(clean_run):
 
     assert len(rows) == len(CLEAN_LEDGER)
     for row in rows:
-        total, paid, status, outstanding, overpaid = CLEAN_LEDGER[row["Order ID"]]
+        # identifiers are text cells so leading zeros and long ids survive
+        assert isinstance(row["Order ID"], str)
+        total, paid, status, outstanding, overpaid = CLEAN_LEDGER[int(row["Order ID"])]
         assert isinstance(row["Order total"], (int, float))
         assert as_decimal(row["Order total"]) == total
         assert as_decimal(row["Net paid"]) == paid
