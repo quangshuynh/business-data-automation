@@ -122,3 +122,44 @@ DEMO_ISSUES = {
     ("payments", 22): ("PMT-281020", "order_rejected"),
     ("payments", 23): ("PMT-281021", "unmapped_status"),
 }
+
+# examples/ordixa/exports/pilot/3-final-delivery (November 2026) with
+# profiles/harbor-lane.toml; hand-computed in examples/ordixa/README.md
+PILOT_LEDGER = {
+    4101: (D("64.00"), D("64.00"), "paid", D("0.00"), D("0.00")),
+    4102: (D("2150.00"), D("1075.00"), "partial", D("1075.00"), D("0.00")),
+    4103: (D("98.50"), D("0.00"), "unpaid", D("98.50"), D("0.00")),
+    4104: (D("310.00"), D("285.00"), "partial", D("25.00"), D("0.00")),
+    4105: (D("47.25"), D("47.25"), "paid", D("0.00"), D("0.00")),
+    4106: (D("129.00"), D("0.00"), "unpaid", D("129.00"), D("0.00")),
+}
+
+PILOT_TOTALS = {
+    "order_value": D("2798.75"),
+    "payments_received": D("1496.25"),
+    "refunds": D("25.00"),
+    "adjustments": D("0.00"),
+    "net_received": D("1471.25"),
+    "applied_to_orders": D("1471.25"),
+    "outstanding_balance": D("1327.50"),
+    "overpayments": D("0.00"),
+}
+
+# payment rows the pilot batch cannot match, by source row
+PILOT_UNMATCHED = {
+    7: ("PMT-291106", "#3004", D("212.75")),
+    8: ("PMT-291107", "#4016", D("129.00")),
+}
+
+# October demo and November pilot orders and payments in one bounded window
+# (no customers file): the November payment for #3004 now matches its order
+WINDOW_TOTALS = {
+    "orders": 21,
+    "order_value": D("7636.15"),
+    "payments_received": D("5779.65"),
+    "refunds": D("37.00"),
+    "adjustments": D("5.00"),
+    "net_received": D("5747.65"),
+    "outstanding_balance": D("2037.50"),
+    "overpayments": D("149.00"),
+}

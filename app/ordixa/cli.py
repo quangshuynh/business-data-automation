@@ -13,8 +13,14 @@ from app.ordixa.inspection import (
     inspect_path,
 )
 from app.ordixa.issues import InputError
-from app.ordixa.manifest import MANIFEST_NAME, WORKBOOK_NAME, write_run_outputs
+from app.ordixa.manifest import (
+    MANIFEST_NAME,
+    WORKBOOK_NAME,
+    verify_run,
+    write_run_outputs,
+)
 from app.ordixa.pipeline import ReconciliationIntegrityError, process
+from app.ordixa.preflight import format_preflight, preflight
 from app.ordixa.profile import ProfileError, load_profile
 
 EXIT_OK = 0
@@ -128,8 +134,36 @@ def build_parser():
         help="parent directory; each run creates a new run-<id> folder inside it",
     )
 
-    check = commands.add_parser("check-profile", help="validate a profile only")
+    check = commands.add_parser(
+        "check-profile",
+        help="validate a profile, optionally against a batch of exports",
+        description=(
+            "Validates the profile. With --input, also runs a read-only pilot "
+            "preflight: every missing file, missing column, unused or "
+            "personal-data column, and row-outcome count, without writing files "
+            "or printing cell values."
+        ),
+    )
     check.add_argument("--profile", required=True, type=Path, help="TOML profile")
+    check.add_argument(
+        "--input", type=Path, help="export directory to preflight against the profile"
+    )
+    check.add_argument(
+        "--json", action="store_true", help="print the preflight report as JSON"
+    )
+
+    verify = commands.add_parser(
+        "verify",
+        help="re-check a finished run directory against its manifest",
+        description=(
+            "Read-only. Recomputes output checksums, sizes, CSV row counts, and "
+            "optionally input checksums, and confirms the workbook has no formulas."
+        ),
+    )
+    verify.add_argument("--run", required=True, type=Path, help="run-<id> directory")
+    verify.add_argument(
+        "--input", type=Path, help="original export directory, to check inputs too"
+    )
 
     inspect = commands.add_parser(
         "inspect",
@@ -202,6 +236,55 @@ def inspect_command(args):
     return EXIT_INPUT if any(item["errors"] for item in reports) else EXIT_OK
 
 
+def check_profile_command(args):
+    """
+    executes the check-profile subcommand and its optional preflight
+    :param args: parsed arguments
+    :returns: exit code
+    """
+    if args.json and args.input is None:
+        report("--json needs --input", sys.stderr)
+        return EXIT_USAGE
+    profile = load_profile(args.profile)
+    if not args.json:
+        # keeps --json output parseable as a single document
+        report(f"profile {profile.name} {profile.version} is valid")
+    if args.input is None:
+        return EXIT_OK
+
+    warn_about_input_location(args.input)
+    result = preflight(profile, args.input)
+    if args.json:
+        print(json.dumps(result, indent=2, ensure_ascii=False))
+    else:
+        print(format_preflight(result))
+    return EXIT_INPUT if result["readiness"] == "blocked" else EXIT_OK
+
+
+def verify_command(args):
+    """
+    executes the read-only verify subcommand
+    :param args: parsed arguments
+    :returns: exit code
+    """
+    if not (args.run / MANIFEST_NAME).is_file():
+        report(f"input error: {args.run / MANIFEST_NAME} does not exist", sys.stderr)
+        return EXIT_INPUT
+    if args.input is not None and not args.input.is_dir():
+        report(f"input error: {args.input} is not a directory", sys.stderr)
+        return EXIT_INPUT
+
+    checks = verify_run(args.run, args.input)
+    for description, passed in checks:
+        print(f"  {'ok  ' if passed else 'FAIL'} {description}")
+    failed = sum(1 for _, passed in checks if not passed)
+    if failed:
+        report(f"{failed} of {len(checks)} checks failed; do not deliver this run")
+        return EXIT_INTEGRITY
+    report(f"all {len(checks)} checks passed")
+    return EXIT_OK
+
+
 def run_command(args):
     """
     executes the run subcommand
@@ -268,9 +351,9 @@ def main(argv=None):
         if args.command == "inspect":
             return inspect_command(args)
         if args.command == "check-profile":
-            profile = load_profile(args.profile)
-            report(f"profile {profile.name} {profile.version} is valid")
-            return EXIT_OK
+            return check_profile_command(args)
+        if args.command == "verify":
+            return verify_command(args)
         return run_command(args)
     except ProfileError as error:
         report(str(error), sys.stderr)

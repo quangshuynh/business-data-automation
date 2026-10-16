@@ -6,6 +6,8 @@ not a compliance programme. Nothing here is a legal guarantee or a claim of
 certification (SOC 2, ISO 27001, PCI DSS, GDPR, or otherwise). Items marked
 **Owner decision** need an explicit choice by the business owner before the
 first real file arrives, ideally recorded in writing with the customer.
+They are collected, with suggested defaults, in the approval checklist
+[pilot/DATA_DECISIONS.md](pilot/DATA_DECISIONS.md).
 
 ## What Ordixa does and does not do with data
 
@@ -28,6 +30,11 @@ first real file arrives, ideally recorded in writing with the customer.
    card details, full addresses, notes, tags, marketing consent, and tax IDs.
    Run `python -m app.ordixa inspect --input <file>` on arrival; it flags
    email and phone columns so unexpected personal data is noticed early.
+   Then run `check-profile --profile <profile> --input <directory>`: the
+   [pilot preflight](ORDIXA.md#pilot-preflight) flags unused columns whose
+   headers suggest personal data, and blocks on headers that suggest card,
+   bank, government ID, or credential data. Both are header heuristics;
+   they do not prove a file is minimized.
 3. Accept files only through a channel with access control and encryption in
    transit, such as a shared folder restricted to named people or an
    encrypted archive whose password is sent through a different channel.
@@ -72,6 +79,9 @@ first real file arrives, ideally recorded in writing with the customer.
   exports. The workbook contains names, emails, and source values.
 - Send only what the customer needs: usually the workbook alone. The CSV
   artifacts and manifest stay with the operator as the audit record.
+- Before sending, run `python -m app.ordixa verify --run <run-dir> --input
+  <directory>`; do not deliver a run with any failed check. The
+  [delivery checklist](pilot/DELIVERY_CHECKLIST.md) covers the rest.
 - State clearly that the workbook reconciles only the files in that run. It is
   not an accounting ledger, does not include earlier periods unless their
   orders were supplied, and does not replace the customer's bookkeeping.
@@ -119,9 +129,10 @@ expected):
 
 ## Checklist before the first real customer file
 
+- [ ] Every owner decision in [pilot/DATA_DECISIONS.md](pilot/DATA_DECISIONS.md) approved and dated
 - [ ] Transfer channel chosen and tested with a fictional file
 - [ ] Encrypted storage location prepared, outside the repository or in `customer-data/`
 - [ ] Retention period and backup decision agreed with the customer in writing
 - [ ] Customer told which columns to remove before sending
-- [ ] Profile checked with `check-profile` and the export checked with `inspect`
+- [ ] Export checked with `inspect` and the batch with `check-profile --input`
 - [ ] Escalation contact for unexpected personal data identified

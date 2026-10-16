@@ -37,6 +37,13 @@ workflow as a guided, self-verifying walkthrough ([DEMO.md](DEMO.md)). Validate 
 python -m app.ordixa check-profile --profile examples/ordixa/profiles/harbor-lane.toml
 ```
 
+Preflight a batch of exports against the profile before a real run
+(read-only, see [Pilot preflight](#pilot-preflight)):
+
+```bash
+python -m app.ordixa check-profile --profile examples/ordixa/profiles/harbor-lane.toml   --input examples/ordixa/exports/pilot/3-final-delivery
+```
+
 Describe an unfamiliar export before writing a profile (read-only, see
 [Inspecting exports](#inspecting-exports)):
 
@@ -46,11 +53,11 @@ python -m app.ordixa inspect --input examples/ordixa/exports/text-ids
 
 | Exit code | Meaning |
 | --- | --- |
-| 0 | Run completed (rejected rows are reported, not fatal); `inspect` read every file |
+| 0 | Run completed (rejected rows are reported, not fatal); `inspect` read every file; preflight found nothing blocking |
 | 1 | Unexpected internal error; details are withheld unless `ORDIXA_DEBUG=1` |
 | 2 | Invalid profile or command usage |
-| 3 | Input problem: missing directory, dataset, column, oversized or unreadable file; `inspect` could not read a file |
-| 4 | Reconciliation integrity check failed; nothing written |
+| 3 | Input problem: missing directory, dataset, column, oversized or unreadable file; `inspect` could not read a file; preflight is blocked |
+| 4 | Reconciliation integrity check failed, nothing written; `verify` found a mismatch |
 | 5 | Output location refused or not writable; nothing kept |
 
 `--out` is a parent directory. Output inside the input directory or inside the
@@ -174,6 +181,40 @@ prints no cell values by default, scans at most `--max-rows` rows per table
 identical input. Options: `--encoding` for CSV text, `--json` for a
 machine-readable report, and `--preview N` (opt-in, at most 10 rows) to show
 rows redacted to character shapes (`Morgan Vale` → `Aaaaaa Aaaa`).
+
+## Pilot preflight
+
+`check-profile --profile <profile> --input <directory>` checks one batch of
+exports against a profile before a real run. A failed `run` stops at the first
+problem; preflight lists every problem at once so the customer can be asked
+for everything in one message. It writes nothing and prints file names,
+column headers, issue codes, and counts, never cell values.
+
+| Check | Level |
+| --- | --- |
+| Input directory missing; required dataset missing; file matching two datasets | blocking |
+| File above 200 MB, unreadable, missing the profile's worksheet, duplicate headers | blocking |
+| Mapped column missing (closest header named) | blocking |
+| Unused column whose header suggests card, bank, government ID, or credential data | blocking |
+| Unused column whose header suggests personal data (address, email, notes, tags) | warning |
+| File no dataset reads (renamed export, `.xls`, `.tsv`) | warning |
+| More than 20% of a dataset's rows have values the profile cannot read | warning |
+| Payments referencing an order not in the batch (`order_not_in_run`) | warning |
+| Rows with a blank or different currency | warning |
+| Other unused columns; optional dataset absent; no currency column mapped | note |
+
+When nothing is blocking, the batch is processed in memory with the same code
+as `run`, and preflight reports row outcomes per dataset, the order status
+counts, and rejected, warned, and excluded rows grouped by dataset, field, and
+issue code. The result is `BLOCKED` (exit 3), `REVIEW` (warnings, or rows that
+would be rejected), or `READY` (exit 0 for both). `--json` prints the same
+report as JSON.
+
+Header checks are keyword heuristics: they can miss a sensitive column with
+an unusual name and can flag a harmless one. A clean preflight is not proof
+that the data is complete, minimized, or correct. Review the workbook and
+verify totals independently after the run. The pilot walkthrough in
+[pilot/SCENARIO.md](pilot/SCENARIO.md) shows preflight on three deliveries.
 
 ## Normalization rules
 
@@ -307,7 +348,16 @@ input file names, so avoid putting personal data in file names.
 **Verification.** `verify_run()` in `app/ordixa/manifest.py` re-checks a run
 directory against its manifest: each output's SHA-256 and size, the CSV row
 counts, optionally each input's SHA-256, and the absence of workbook
-formulas. The demo calls it as its last step.
+formulas. The demo calls it as its last step, and operators can run it
+before delivering a workbook:
+
+```bash
+python -m app.ordixa verify --run output/demo/run-<id> --input examples/ordixa/exports/demo
+```
+
+`verify` is read-only and prints one line per check. It exits 0 when every
+check passes, 4 when any fails (do not deliver that run), and 3 when the run
+directory has no manifest.
 
 **Reruns.** Re-running the same inputs creates a new directory; earlier runs
 are never overwritten. Two runs of identical inputs with the same profile and
@@ -361,13 +411,16 @@ repository. Operating guidance for real customer files is in
 
 Phase 1A (profile-driven imports) and Phase 1B (import hardening) are merged
 into `main`. Phase 1A profiles work unchanged; their results are identical.
+Interval 4 added the pilot preflight, the `verify` command, and the
+[pilot kit](pilot/README.md); it did not change reconciliation results.
 
 ## Roadmap (not implemented)
 
 1. Starter profiles validated against real, consented sample exports.
 2. Per-dataset currency.
 3. Optional persisted import history so later payments can be matched to
-   earlier orders explicitly and auditably.
+   earlier orders explicitly and auditably, only if pilot evidence justifies
+   it ([cross-run assessment](pilot/CROSS_RUN_ASSESSMENT.md)).
 4. Workbook review loop: carry reviewer notes between runs.
 5. Packaging (`pip install` entry point) once the CLI stabilizes.
 
