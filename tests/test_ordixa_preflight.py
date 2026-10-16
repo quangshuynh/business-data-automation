@@ -330,3 +330,52 @@ def test_run_discovery_still_fails_fast():
     )
     assert [path.name for path in discovered["payments"]] == ["payments_2026-11.csv"]
     assert ignored == []
+
+
+def test_verify_command_passes_and_detects_tampering(tmp_path, capsys):
+    """
+    tests the verify subcommand against a fresh and a modified run directory
+    :param tmp_path: pytest temporary directory
+    :param capsys: pytest output capture
+    :returns: none
+    """
+    batch = PILOT_DIR / "3-final-delivery"
+    out = tmp_path / "runs"
+    assert (
+        cli.main(
+            [
+                "run",
+                "--profile",
+                str(PROFILE_PATH),
+                "--input",
+                str(batch),
+                "--out",
+                str(out),
+            ]
+        )
+        == cli.EXIT_OK
+    )
+    [run_dir] = list(out.iterdir())
+    capsys.readouterr()
+
+    args = ["verify", "--run", str(run_dir), "--input", str(batch)]
+    assert cli.main(args) == cli.EXIT_OK
+    assert "all 9 checks passed" in capsys.readouterr().out
+
+    ledger = run_dir / "reconciliation_ledger.csv"
+    ledger.write_bytes(ledger.read_bytes().replace(b"1075.00", b"1057.00"))
+    assert cli.main(args) == cli.EXIT_INTEGRITY
+    output = capsys.readouterr().out
+    assert "FAIL reconciliation_ledger.csv matches its recorded SHA-256" in output
+    assert "do not deliver this run" in output
+
+
+def test_verify_command_refuses_a_directory_without_manifest(tmp_path, capsys):
+    """
+    tests that verify reports a missing manifest as an input problem
+    :param tmp_path: pytest temporary directory
+    :param capsys: pytest output capture
+    :returns: none
+    """
+    assert cli.main(["verify", "--run", str(tmp_path)]) == cli.EXIT_INPUT
+    assert "manifest.json does not exist" in capsys.readouterr().err

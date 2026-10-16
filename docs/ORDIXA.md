@@ -57,7 +57,7 @@ python -m app.ordixa inspect --input examples/ordixa/exports/text-ids
 | 1 | Unexpected internal error; details are withheld unless `ORDIXA_DEBUG=1` |
 | 2 | Invalid profile or command usage |
 | 3 | Input problem: missing directory, dataset, column, oversized or unreadable file; `inspect` could not read a file; preflight is blocked |
-| 4 | Reconciliation integrity check failed; nothing written |
+| 4 | Reconciliation integrity check failed, nothing written; `verify` found a mismatch |
 | 5 | Output location refused or not writable; nothing kept |
 
 `--out` is a parent directory. Output inside the input directory or inside the
@@ -348,7 +348,16 @@ input file names, so avoid putting personal data in file names.
 **Verification.** `verify_run()` in `app/ordixa/manifest.py` re-checks a run
 directory against its manifest: each output's SHA-256 and size, the CSV row
 counts, optionally each input's SHA-256, and the absence of workbook
-formulas. The demo calls it as its last step.
+formulas. The demo calls it as its last step, and operators can run it
+before delivering a workbook:
+
+```bash
+python -m app.ordixa verify --run output/demo/run-<id> --input examples/ordixa/exports/demo
+```
+
+`verify` is read-only and prints one line per check. It exits 0 when every
+check passes, 4 when any fails (do not deliver that run), and 3 when the run
+directory has no manifest.
 
 **Reruns.** Re-running the same inputs creates a new directory; earlier runs
 are never overwritten. Two runs of identical inputs with the same profile and

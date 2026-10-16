@@ -13,7 +13,12 @@ from app.ordixa.inspection import (
     inspect_path,
 )
 from app.ordixa.issues import InputError
-from app.ordixa.manifest import MANIFEST_NAME, WORKBOOK_NAME, write_run_outputs
+from app.ordixa.manifest import (
+    MANIFEST_NAME,
+    WORKBOOK_NAME,
+    verify_run,
+    write_run_outputs,
+)
 from app.ordixa.pipeline import ReconciliationIntegrityError, process
 from app.ordixa.preflight import format_preflight, preflight
 from app.ordixa.profile import ProfileError, load_profile
@@ -147,6 +152,19 @@ def build_parser():
         "--json", action="store_true", help="print the preflight report as JSON"
     )
 
+    verify = commands.add_parser(
+        "verify",
+        help="re-check a finished run directory against its manifest",
+        description=(
+            "Read-only. Recomputes output checksums, sizes, CSV row counts, and "
+            "optionally input checksums, and confirms the workbook has no formulas."
+        ),
+    )
+    verify.add_argument("--run", required=True, type=Path, help="run-<id> directory")
+    verify.add_argument(
+        "--input", type=Path, help="original export directory, to check inputs too"
+    )
+
     inspect = commands.add_parser(
         "inspect",
         help="describe unfamiliar CSV/XLSX exports before writing a profile",
@@ -243,6 +261,30 @@ def check_profile_command(args):
     return EXIT_INPUT if result["readiness"] == "blocked" else EXIT_OK
 
 
+def verify_command(args):
+    """
+    executes the read-only verify subcommand
+    :param args: parsed arguments
+    :returns: exit code
+    """
+    if not (args.run / MANIFEST_NAME).is_file():
+        report(f"input error: {args.run / MANIFEST_NAME} does not exist", sys.stderr)
+        return EXIT_INPUT
+    if args.input is not None and not args.input.is_dir():
+        report(f"input error: {args.input} is not a directory", sys.stderr)
+        return EXIT_INPUT
+
+    checks = verify_run(args.run, args.input)
+    for description, passed in checks:
+        print(f"  {'ok  ' if passed else 'FAIL'} {description}")
+    failed = sum(1 for _, passed in checks if not passed)
+    if failed:
+        report(f"{failed} of {len(checks)} checks failed; do not deliver this run")
+        return EXIT_INTEGRITY
+    report(f"all {len(checks)} checks passed")
+    return EXIT_OK
+
+
 def run_command(args):
     """
     executes the run subcommand
@@ -310,6 +352,8 @@ def main(argv=None):
             return inspect_command(args)
         if args.command == "check-profile":
             return check_profile_command(args)
+        if args.command == "verify":
+            return verify_command(args)
         return run_command(args)
     except ProfileError as error:
         report(str(error), sys.stderr)
