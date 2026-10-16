@@ -393,8 +393,8 @@ def fit_rows(sheet, columns, start_row=2):
         for index, width in wrapped:
             value = sheet.cell(row=row_number, column=index).value
             if isinstance(value, str) and len(value) > width - 2:
-                # body text averages slightly narrower than the width unit
-                chars = max(1, math.floor(width * 1.1) - 2)
+                # body text averages narrower than the width unit's "0"
+                chars = max(1, math.floor(width * 1.2) - 2)
                 lines = max(lines, len(textwrap.wrap(value, chars)) or 1)
         if lines > 1:
             sheet.row_dimensions[row_number].height = LINE_HEIGHT * lines + 2
@@ -588,12 +588,12 @@ def build_summary_sheet(sheet, result, metadata):
             cell = write_cell(sheet, row, index, value)
             cell.font = HASH_FONT if index == 4 else VALUE_FONT
             if index == 3:
-                cell.alignment = FIGURE
+                cell.alignment = Alignment(horizontal="right", indent=1)
             elif index == 4:
                 cell.alignment = Alignment(indent=1)
         row += 1
 
-    for letter, column_width in zip("ABCDEF", (34, 24, 13, 15, 13, 13)):
+    for letter, column_width in zip("ABCDEF", (34, 24, 13, 15, 14, 17)):
         sheet.column_dimensions[letter].width = column_width
     sheet.sheet_view.showGridLines = False
     set_print_layout(sheet, landscape=False)
