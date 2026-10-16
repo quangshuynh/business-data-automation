@@ -206,19 +206,18 @@ def create_run_directory(out_dir, run_id, staging=False):
     return run_dir
 
 
-def write_run_outputs(result, out_dir, started_at=None):
+def publish_run(out_dir, started_at, write):
     """
-    writes the workbook, CSV artifacts, and manifest for a processed run
+    writes a run into a hidden staging directory and publishes it atomically
 
-    everything is written into a hidden staging directory that is renamed to
-    run-<id> only after the manifest is complete, so a run-<id> directory never
-    holds partial outputs; the staging directory is removed if writing fails
-    :param result: run result
+    the staging directory is renamed to run-<id> only after write() returns,
+    so a run-<id> directory never holds partial outputs; the staging
+    directory is removed if writing fails
     :param out_dir: parent output directory
-    :param started_at: optional UTC start time
+    :param started_at: UTC start time
+    :param write: function(staging_dir, final_name, run_id) returning a manifest
     :returns: tuple of run directory and manifest dictionary
     """
-    started_at = started_at or datetime.now(timezone.utc)
     run_id = new_run_id(started_at)
     final_dir = Path(out_dir) / f"run-{run_id}"
     if final_dir.exists():
@@ -226,15 +225,63 @@ def write_run_outputs(result, out_dir, started_at=None):
     staging_dir = create_run_directory(out_dir, run_id, staging=True)
 
     try:
-        manifest = write_artifacts(
-            result, staging_dir, final_dir.name, run_id, started_at
-        )
+        manifest = write(staging_dir, final_dir.name, run_id)
         staging_dir.rename(final_dir)
     except BaseException:
         shutil.rmtree(staging_dir, ignore_errors=True)
         raise
 
     return final_dir, manifest
+
+
+def write_run_outputs(result, out_dir, started_at=None):
+    """
+    writes the workbook, CSV artifacts, and manifest for a processed run
+    :param result: run result
+    :param out_dir: parent output directory
+    :param started_at: optional UTC start time
+    :returns: tuple of run directory and manifest dictionary
+    """
+    started_at = started_at or datetime.now(timezone.utc)
+    return publish_run(
+        out_dir,
+        started_at,
+        lambda run_dir, final_name, run_id: write_artifacts(
+            result, run_dir, final_name, run_id, started_at
+        ),
+    )
+
+
+def output_entries(run_dir, files):
+    """
+    describes written artifacts for the manifest
+    :param run_dir: directory holding the artifacts
+    :param files: (file name, deterministic) pairs in manifest order
+    :returns: list of output dictionaries
+    """
+    return [
+        {
+            "file": name,
+            "sha256": file_sha256(run_dir / name),
+            "bytes": (run_dir / name).stat().st_size,
+            "deterministic": deterministic,
+        }
+        for name, deterministic in files
+    ]
+
+
+def write_manifest(run_dir, manifest):
+    """
+    writes manifest.json with stable formatting
+    :param run_dir: directory receiving the manifest
+    :param manifest: manifest dictionary
+    :returns: none
+    """
+    (run_dir / MANIFEST_NAME).write_text(
+        json.dumps(manifest, indent=2, sort_keys=False) + "\n",
+        encoding="utf-8",
+        newline="\n",
+    )
 
 
 def write_artifacts(result, run_dir, final_name, run_id, started_at):
@@ -265,19 +312,9 @@ def write_artifacts(result, run_dir, final_name, run_id, started_at):
     )
     write_csv(run_dir / ISSUES_NAME, ISSUE_COLUMNS, issue_rows(result.issues))
 
-    outputs = [
-        {
-            "file": name,
-            "sha256": file_sha256(run_dir / name),
-            "bytes": (run_dir / name).stat().st_size,
-            "deterministic": deterministic,
-        }
-        for name, deterministic in (
-            (LEDGER_NAME, True),
-            (ISSUES_NAME, True),
-            (WORKBOOK_NAME, False),
-        )
-    ]
+    outputs = output_entries(
+        run_dir, ((LEDGER_NAME, True), (ISSUES_NAME, True), (WORKBOOK_NAME, False))
+    )
     profile = result.profile
     manifest = {
         "manifest_version": MANIFEST_VERSION,
@@ -322,12 +359,24 @@ def write_artifacts(result, run_dir, final_name, run_id, started_at):
         "outputs": outputs,
     }
 
-    (run_dir / MANIFEST_NAME).write_text(
-        json.dumps(manifest, indent=2, sort_keys=False) + "\n",
-        encoding="utf-8",
-        newline="\n",
-    )
+    write_manifest(run_dir, manifest)
     return manifest
+
+
+def find_inputs(name, locations):
+    """
+    finds candidate copies of a recorded input among directories and files
+    :param name: input file name recorded in the manifest
+    :param locations: directories or files supplied for verification
+    :returns: list of existing candidate paths
+    """
+    candidates = []
+    for location in map(Path, locations):
+        if location.is_dir() and (location / name).is_file():
+            candidates.append(location / name)
+        elif location.is_file() and location.name == name:
+            candidates.append(location)
+    return candidates
 
 
 def verify_run(run_dir, input_dir=None):
@@ -338,7 +387,8 @@ def verify_run(run_dir, input_dir=None):
     the CSV artifacts, optionally the SHA-256 of every input file, and confirms
     the workbook holds no formula cells
     :param run_dir: run-<id> directory
-    :param input_dir: optional directory holding the original exports
+    :param input_dir: optional directory holding the original exports, or a
+        list of directories and files when the inputs came from several places
     :returns: list of (check description, passed) tuples
     """
     run_dir = Path(run_dir)
@@ -364,22 +414,34 @@ def verify_run(run_dir, input_dir=None):
         )
 
     if input_dir is not None:
+        locations = input_dir if isinstance(input_dir, (list, tuple)) else [input_dir]
         for item in manifest["result"]["inputs"]:
-            path = Path(input_dir) / item["file"]
             checks.append(
                 (
                     f"input {item['file']} is unchanged since the run",
-                    path.is_file() and file_sha256(path) == item["sha256"],
+                    any(
+                        file_sha256(path) == item["sha256"]
+                        for path in find_inputs(item["file"], locations)
+                    ),
                 )
             )
 
-    workbook = load_workbook(run_dir / WORKBOOK_NAME)
-    formulas = sum(
-        1
-        for sheet in workbook
-        for row in sheet.iter_rows()
-        for cell in row
-        if cell.data_type == "f"
-    )
-    checks.append(("workbook contains no formulas", formulas == 0))
+    # every workbook a run lists is checked; reconciliation runs have one
+    workbooks = [o["file"] for o in manifest["outputs"] if o["file"].endswith(".xlsx")]
+    for name in workbooks:
+        workbook = load_workbook(run_dir / name)
+        formulas = sum(
+            1
+            for sheet in workbook
+            for row in sheet.iter_rows()
+            for cell in row
+            if cell.data_type == "f"
+        )
+        workbook.close()
+        description = (
+            "workbook contains no formulas"
+            if len(workbooks) == 1
+            else f"{name} contains no formulas"
+        )
+        checks.append((description, formulas == 0))
     return checks
