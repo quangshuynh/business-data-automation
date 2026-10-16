@@ -309,6 +309,28 @@ def test_inspect_xlsx_lists_worksheets_and_native_types(tmp_path):
     assert any("longer than 15 digits" in n for n in columns["Card"]["notes"])
 
 
+def test_inspect_numeric_amount_cells_report_decimals_not_identifier_notes(tmp_path):
+    """
+    native number cells in a money column count their decimal places and do
+    not get the leading-zero note meant for identifier columns
+    :param tmp_path: pytest temporary directory
+    :returns: none
+    """
+    workbook = Workbook()
+    sheet = workbook.active
+    sheet.append(["Transaction ID", "Amount"])
+    sheet.append(["PMT-1", 84.5])
+    sheet.append(["PMT-2", 27.25])
+    sheet.append(["PMT-3", -12])
+    workbook.save(tmp_path / "payments.xlsx")
+
+    amount = columns_by_name(inspect_file(tmp_path / "payments.xlsx"))["Amount"]
+
+    assert amount["basic_type"] == "number"
+    assert amount["suggestions"] == ["possible amount (up to 2 decimal place(s))"]
+    assert not any("numeric cells" in note for note in amount["notes"])
+
+
 def test_inspect_row_limit_is_reported(tmp_path, capsys):
     """
     scanning stops at --max-rows and says so

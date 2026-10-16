@@ -126,6 +126,10 @@ class ColumnStats:
             digits = len(str(value).replace("-", "").replace(".", "").lstrip("0"))
             if digits > EXCEL_DIGITS:
                 self.long_numbers += 1
+            # repr is the shortest text that round-trips, so 84.5 has one place
+            exponent = Decimal(repr(value)).as_tuple().exponent
+            if isinstance(exponent, int) and exponent < 0:
+                self.max_decimals = max(self.max_decimals, -exponent)
         else:
             self.observe_text(str(value))
 
@@ -327,7 +331,11 @@ class ColumnStats:
                 f"{self.leading_zeros} value(s) with leading zeros; keep them by "
                 "treating this column as text identifiers"
             )
-        if self.kinds["number cell"] and id_shaped == values and suggestions:
+        if (
+            self.kinds["number cell"]
+            and id_shaped == values
+            and any(s.startswith("possible identifier") for s in suggestions)
+        ):
             notes.append(
                 "stored as numeric cells; leading zeros, if there were any, may "
                 "already have been removed by the spreadsheet"
