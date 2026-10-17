@@ -1,0 +1,722 @@
+"""
+deterministic cleaning and keyed comparison of one table
+
+cleaning maps source columns onto the profile's output columns, trims and
+normalizes values by declared type, and holds back every row it cannot use
+as-is with a reason; comparison cleans both versions with the same rules and
+matches records only by the explicit business key
+"""
+
+import math
+import re
+from collections import defaultdict
+from dataclasses import dataclass, field
+from datetime import date, datetime
+from decimal import Decimal
+from pathlib import Path
+
+from app.ordixa.adapters import read_table
+from app.ordixa.issues import InputError
+from app.ordixa.normalize import (
+    MAX_EXACT_FLOAT_ID,
+    NormalizationError,
+    identifier_sort_key,
+    identifier_spelling,
+    parse_amount,
+    parse_date,
+    parse_text_identifier,
+)
+
+REJECTED = "Rejected"
+DUPLICATE_REMOVED = "Removed duplicate"
+NOTE = "Note"
+OUTCOMES = (REJECTED, DUPLICATE_REMOVED, NOTE)
+
+ADDED = "added"
+REMOVED = "removed"
+MODIFIED = "modified"
+UNCHANGED = "unchanged"
+AMBIGUOUS = "ambiguous"
+INVALID = "invalid"
+CHANGE_KINDS = (ADDED, REMOVED, MODIFIED, UNCHANGED, AMBIGUOUS, INVALID)
+
+# report order: single-file runs, then the earlier and later export
+SIDE_ORDER = {"input": 0, "before": 1, "after": 2, "both": 3}
+KEY_SEPARATOR = " / "
+INTEGER_PATTERN = re.compile(r"^-?[0-9]+$")
+
+# explanations never quote cell values; the offending value, when one is
+# needed to fix the source, is kept in the issue's separate value field
+MESSAGES = {
+    "missing_value": "required value is blank",
+    "invalid_identifier": (
+        "not a valid identifier (letters, digits, and - _ . / : #, starting with "
+        "a letter, digit, or #; no spaces)"
+    ),
+    "invalid_amount": "not an amount in the profile's declared format",
+    "too_many_decimal_places": "has more decimal places than the profile allows",
+    "amount_out_of_range": "amount is outside the supported range",
+    "invalid_integer": "not a whole number (digits with an optional leading minus)",
+    "invalid_date": "does not match any declared date format",
+    "ambiguous_date": "matches several declared date formats with different dates",
+    "invalid_calendar_date": "is not a real calendar date",
+    "malformed_row": "row has a different number of cells than the header; skipped",
+}
+
+
+class TabularIntegrityError(RuntimeError):
+    """raised when cleaning or comparison counts do not add up"""
+
+
+@dataclass(frozen=True)
+class TableIssue:
+    """
+    a finding about one source row, or about the whole file when row is 0
+
+    rejected rows are left out of the cleaned output and the comparison;
+    removed duplicates were identical to an earlier row that was kept
+    """
+
+    side: str
+    file: str
+    row: int
+    outcome: str
+    code: str
+    message: str
+    key: str = ""
+    column: str = ""
+    source_column: str = ""
+    value: str = ""
+
+    def sort_key(self):
+        """
+        provides a deterministic report order
+        :returns: tuple used for sorting
+        """
+        return (
+            SIDE_ORDER.get(self.side, 9),
+            self.file,
+            self.row,
+            self.code,
+            self.column,
+        )
+
+
+@dataclass(frozen=True)
+class Record:
+    """one accepted row: typed values by output column, and its business key"""
+
+    row: int
+    values: dict
+    key: tuple | None
+
+
+@dataclass(frozen=True)
+class InputFile:
+    """what was read from one input file"""
+
+    role: str
+    name: str
+    sha256: str
+    data_rows: int
+
+
+@dataclass
+class CleanResult:
+    """outcome of cleaning one file"""
+
+    profile: object
+    input: InputFile
+    header: tuple
+    records: list
+    issues: list
+    unmapped_columns: list
+    missing_columns: list
+    duplicate_keys: set = field(default_factory=set)
+    conflicting_keys: set = field(default_factory=set)
+    rejected_keys: set = field(default_factory=set)
+    unkeyed_rejections: int = 0
+    stats: dict = field(default_factory=dict)
+
+    @property
+    def inputs(self):
+        """
+        lists the files read, for manifests
+        :returns: list of input files
+        """
+        return [self.input]
+
+    @property
+    def unresolved_keys(self):
+        """
+        business keys that cannot be used as one authoritative record
+        :returns: set of keys with conflicting or rejected rows
+        """
+        return self.conflicting_keys | self.rejected_keys
+
+    def counts(self):
+        """
+        summarizes row outcomes without any cell values
+        :returns: dictionary of counts
+        """
+        rejected_rows = {i.row for i in self.issues if i.outcome == REJECTED}
+        return {
+            "rows_read": self.input.data_rows,
+            "rows_written": len(self.records),
+            "rows_rejected": len(rejected_rows),
+            "duplicate_rows_removed": sum(
+                1 for i in self.issues if i.outcome == DUPLICATE_REMOVED
+            ),
+            "duplicate_keys": len(self.duplicate_keys),
+            "conflicting_keys": len(self.conflicting_keys),
+            "unmapped_columns": len(self.unmapped_columns),
+            "missing_optional_columns": len(self.missing_columns),
+            **self.stats,
+        }
+
+
+@dataclass(frozen=True)
+class ValueChange:
+    """one column whose value differs between the two versions"""
+
+    key: tuple
+    column: str
+    before: object
+    after: object
+    difference: Decimal | int | None
+
+
+@dataclass
+class CompareResult:
+    """outcome of comparing two versions of a table"""
+
+    profile: object
+    before: CleanResult
+    after: CleanResult
+    compared_columns: list
+    skipped_columns: list
+    status: dict
+    added: list
+    removed: list
+    changes: list
+    issues: list
+
+    @property
+    def inputs(self):
+        """
+        lists the files read, for manifests
+        :returns: list of input files
+        """
+        return [self.before.input, self.after.input]
+
+    def keys_with(self, kind):
+        """
+        lists business keys in one change category, in natural key order
+        :param kind: a CHANGE_KINDS value
+        :returns: list of keys
+        """
+        return [key for key, value in self.status.items() if value == kind]
+
+    def counts(self):
+        """
+        summarizes the comparison without any cell values
+        :returns: dictionary of counts
+        """
+        totals = {kind: 0 for kind in CHANGE_KINDS}
+        for kind in self.status.values():
+            totals[kind] += 1
+        by_column = defaultdict(int)
+        for change in self.changes:
+            by_column[change.column] += 1
+        return {
+            "before_rows": self.before.input.data_rows,
+            "after_rows": self.after.input.data_rows,
+            "before_records": len(self.before.records),
+            "after_records": len(self.after.records),
+            "added": totals[ADDED],
+            "removed": totals[REMOVED],
+            "modified": totals[MODIFIED],
+            "unchanged": totals[UNCHANGED],
+            "ambiguous_keys": totals[AMBIGUOUS],
+            "invalid_keys": totals[INVALID],
+            "unkeyed_rejected_rows": (
+                self.before.unkeyed_rejections + self.after.unkeyed_rejections
+            ),
+            "changed_values": len(self.changes),
+            "changed_values_by_column": {
+                column: by_column[column]
+                for column in self.compared_columns
+                if by_column[column]
+            },
+        }
+
+
+def key_text(key):
+    """
+    formats a business key for reports
+    :param key: tuple of key parts
+    :returns: display text such as SKU-0042 or NORTH / 000123
+    """
+    return "" if key is None else KEY_SEPARATOR.join(key)
+
+
+def key_sort(key):
+    """
+    orders keys naturally so SKU-9 sorts before SKU-10, part by part
+    :param key: tuple of key parts
+    :returns: comparable tuple
+    """
+    return tuple(identifier_sort_key(part) for part in key)
+
+
+def as_text(value):
+    """
+    gives the canonical text of a cleaned value, used for output and comparison
+    :param value: typed cleaned value
+    :returns: text, empty for blank
+    """
+    if value is None:
+        return ""
+    if isinstance(value, Decimal):
+        return format(value, "f")
+    if isinstance(value, date):
+        return value.isoformat()
+    return str(value)
+
+
+def parse_integer(value):
+    """
+    parses a whole number such as a stock quantity without float rounding
+    :param value: raw cell value
+    :returns: integer
+    """
+    if isinstance(value, bool):
+        raise NormalizationError("invalid_integer", "not a whole number")
+    if isinstance(value, int):
+        return value
+    if isinstance(value, float):
+        if math.isfinite(value) and value.is_integer() and abs(value) <= 2**53:
+            return int(value)
+        raise NormalizationError("invalid_integer", "not a whole number")
+    if isinstance(value, Decimal):
+        if value.is_finite() and value == value.to_integral_value():
+            return int(value)
+        raise NormalizationError("invalid_integer", "not a whole number")
+    text = str(value).strip()
+    if not INTEGER_PATTERN.match(text):
+        raise NormalizationError("invalid_integer", "not a whole number")
+    return int(text)
+
+
+def source_text(value):
+    """
+    converts a raw cell into text for a text column
+    :param value: raw cell value
+    :returns: text, keeping whole-number spreadsheet cells free of .0
+    """
+    if isinstance(value, float) and abs(value) > MAX_EXACT_FLOAT_ID:
+        return repr(value)
+    if isinstance(value, datetime):
+        return value.isoformat(sep=" ")
+    if isinstance(value, date):
+        return value.isoformat()
+    return identifier_spelling(value) if not isinstance(value, str) else value
+
+
+def normalize_value(raw, column, profile, stats):
+    """
+    applies the profile's whitespace, blank, and type rules to one cell
+    :param raw: raw cell value
+    :param column: column specification
+    :param profile: table profile
+    :param stats: counters updated with the transformations applied
+    :returns: typed value, or none for blank
+    """
+    if raw is None or (isinstance(raw, float) and math.isnan(raw)):
+        return None
+
+    if isinstance(raw, str):
+        text = raw.strip()
+        if column.whitespace == "collapse":
+            text = " ".join(text.split())
+        if text != raw:
+            stats["whitespace_normalized"] += 1
+        if not text:
+            return None
+        if text in profile.blank_values:
+            stats["blank_tokens_normalized"] += 1
+            return None
+        value = text
+    else:
+        value = raw
+
+    if column.type == "text":
+        return source_text(value)
+    if column.type == "identifier":
+        return parse_text_identifier(value)
+    if column.type == "integer":
+        parsed = parse_integer(value)
+    elif column.type == "decimal":
+        parsed = parse_amount(value, profile.amounts)
+    else:
+        parsed = parse_date(value, profile.date_formats)
+    if isinstance(value, str) and as_text(parsed) != value:
+        stats["values_reformatted"] += 1
+    return parsed
+
+
+def read_input(path, profile, role):
+    """
+    reads one CSV/XLSX file with the shared readers and size limit
+    :param path: input file path
+    :param profile: table profile
+    :param role: input, before, or after
+    :returns: source table
+    """
+    path = Path(path)
+    if not path.is_file():
+        raise InputError(f"{role} file not found: {path}")
+    suffix = path.suffix.lower().lstrip(".")
+    if suffix not in profile.formats:
+        raise InputError(
+            f"{path.name} is not one of the profile's accepted formats "
+            f"{sorted(profile.formats)}"
+        )
+    return read_table(path, profile.read_spec(role), profile)
+
+
+def clean_table(profile, path, role="input"):
+    """
+    cleans one CSV/XLSX file with a table profile; the file is only read
+    :param profile: table profile
+    :param path: input file path
+    :param role: input, before, or after, used in reports
+    :returns: clean result
+    """
+    table = read_input(path, profile, role)
+    header = table.header
+    name = table.path.name
+    sources = {column.source for column in profile.columns}
+    missing = [c.name for c in profile.columns if c.source not in header]
+    unmapped = [h for h in header if h and h not in sources]
+    stats = {
+        "whitespace_normalized": 0,
+        "blank_tokens_normalized": 0,
+        "values_reformatted": 0,
+    }
+    issues = [
+        TableIssue(
+            role, name, row, REJECTED, "malformed_row", MESSAGES["malformed_row"]
+        )
+        for row in table.malformed_rows
+    ]
+    for column in missing:
+        issues.append(
+            TableIssue(
+                role,
+                name,
+                0,
+                NOTE,
+                "optional_column_missing",
+                "optional column is not in this file; its values are blank",
+                column=column,
+                source_column=profile.column(column).source,
+            )
+        )
+    if unmapped:
+        issues.append(
+            TableIssue(
+                role,
+                name,
+                0,
+                NOTE,
+                "unmapped_columns",
+                f"{len(unmapped)} source column(s) not in the profile were left "
+                f"out of the outputs: {', '.join(unmapped)}",
+            )
+        )
+
+    records = []
+    rejected = []
+    for source in table.rows:
+        values = {}
+        problems = []
+        for column in profile.columns:
+            raw = source.values.get(column.source)
+            try:
+                value = normalize_value(raw, column, profile, stats)
+            except NormalizationError as error:
+                problems.append((column, error.code, raw))
+                value = None
+            else:
+                if value is None and column.required:
+                    problems.append((column, "missing_value", None))
+            values[column.name] = value
+
+        key = None
+        failed = {column.name for column, _, _ in problems}
+        if profile.key and not failed & set(profile.key):
+            key = tuple(as_text(values[name]) for name in profile.key)
+
+        if problems:
+            rejected.append(key)
+            for column, code, raw in problems:
+                issues.append(
+                    TableIssue(
+                        role,
+                        name,
+                        source.row,
+                        REJECTED,
+                        code,
+                        MESSAGES.get(code, "value could not be used"),
+                        key=key_text(key),
+                        column=column.name,
+                        source_column=column.source,
+                        value="" if raw is None else source_text(raw),
+                    )
+                )
+            continue
+        records.append(Record(source.row, values, key))
+
+    result = CleanResult(
+        profile=profile,
+        input=InputFile(
+            role, name, table.sha256, len(table.rows) + len(table.malformed_rows)
+        ),
+        header=header,
+        records=records,
+        issues=issues,
+        unmapped_columns=unmapped,
+        missing_columns=missing,
+        stats=stats,
+    )
+    result.rejected_keys = {key for key in rejected if key is not None}
+    result.unkeyed_rejections = sum(1 for key in rejected if key is None) + len(
+        table.malformed_rows
+    )
+    remove_duplicates(result, rejected)
+    result.issues.sort(key=TableIssue.sort_key)
+    return result
+
+
+def remove_duplicates(result, rejected):
+    """
+    drops exact duplicate rows and holds back every row of a conflicting key
+
+    a row identical to an earlier one is removed and the first is kept; rows
+    sharing a business key but differing in any value are all rejected, as
+    are accepted rows whose key also appears on a rejected row, so no copy is
+    ever chosen as authoritative
+    :param result: clean result, updated in place
+    :param rejected: business keys of rejected rows, none where unreadable
+    :returns: none
+    """
+    profile = result.profile
+    role, name = result.input.role, result.input.name
+    columns = [column.name for column in profile.columns]
+    first_seen = {}
+    unique = []
+    for record in result.records:
+        signature = tuple(as_text(record.values[column]) for column in columns)
+        if signature in first_seen:
+            result.issues.append(
+                TableIssue(
+                    role,
+                    name,
+                    record.row,
+                    DUPLICATE_REMOVED,
+                    "duplicate_row",
+                    f"identical to source row {first_seen[signature]}, which was kept",
+                    key=key_text(record.key),
+                )
+            )
+            continue
+        first_seen[signature] = record.row
+        unique.append(record)
+
+    if not profile.key:
+        result.records = unique
+        return
+
+    seen_keys = defaultdict(int)
+    for key in [record.key for record in result.records] + rejected:
+        if key is not None:
+            seen_keys[key] += 1
+    result.duplicate_keys = {key for key, count in seen_keys.items() if count > 1}
+
+    groups = defaultdict(list)
+    for record in unique:
+        groups[record.key].append(record)
+    kept = []
+    for record in unique:
+        group = groups[record.key]
+        if len(group) > 1:
+            result.conflicting_keys.add(record.key)
+            others = [other.row for other in group if other is not record]
+            differing = [
+                column
+                for column in columns
+                if len({as_text(other.values[column]) for other in group}) > 1
+            ]
+            result.issues.append(
+                TableIssue(
+                    role,
+                    name,
+                    record.row,
+                    REJECTED,
+                    "conflicting_key",
+                    f"business key is also on source row(s) "
+                    f"{', '.join(map(str, others))} with different "
+                    f"{', '.join(differing)}; no copy was chosen",
+                    key=key_text(record.key),
+                )
+            )
+        elif record.key in result.rejected_keys:
+            result.issues.append(
+                TableIssue(
+                    role,
+                    name,
+                    record.row,
+                    REJECTED,
+                    "key_on_rejected_row",
+                    "business key also appears on a rejected row; held back until "
+                    "the source is fixed",
+                    key=key_text(record.key),
+                )
+            )
+        else:
+            kept.append(record)
+    result.records = kept
+
+    expected = len(unique) - len(kept)
+    held = sum(
+        1
+        for issue in result.issues
+        if issue.code in ("conflicting_key", "key_on_rejected_row")
+    )
+    if expected != held:
+        raise TabularIntegrityError("held-back rows do not match their issues")
+
+
+def difference(column, before, after):
+    """
+    computes the signed change of a numeric column
+    :param column: column specification
+    :param before: previous typed value
+    :param after: new typed value
+    :returns: after minus before for decimal and integer columns, else none
+    """
+    if column.type not in ("decimal", "integer") or before is None or after is None:
+        return None
+    return after - before
+
+
+def compare_tables(profile, before_path, after_path):
+    """
+    compares two versions of a table by business key
+    :param profile: compare profile
+    :param before_path: earlier export
+    :param after_path: later export
+    :returns: compare result
+    """
+    before = clean_table(profile, before_path, "before")
+    after = clean_table(profile, after_path, "after")
+    issues = sorted(before.issues + after.issues, key=TableIssue.sort_key)
+
+    skipped = sorted(set(before.missing_columns) | set(after.missing_columns))
+    compared = [
+        column
+        for column in profile.columns
+        if column.name not in profile.key
+        and column.name not in profile.ignore
+        and column.name not in skipped
+    ]
+    for name in skipped:
+        if name in profile.key or name in profile.ignore:
+            continue
+        issues.append(
+            TableIssue(
+                "both",
+                "",
+                0,
+                NOTE,
+                "column_not_compared",
+                "column is missing from at least one file, so it was not compared",
+                column=name,
+                source_column=profile.column(name).source,
+            )
+        )
+
+    before_index = {record.key: record for record in before.records}
+    after_index = {record.key: record for record in after.records}
+    keys = (
+        set(before_index)
+        | set(after_index)
+        | before.unresolved_keys
+        | after.unresolved_keys
+    )
+
+    status = {}
+    added, removed, changes = [], [], []
+    for key in sorted(keys, key=key_sort):
+        if key in before.conflicting_keys or key in after.conflicting_keys:
+            status[key] = AMBIGUOUS
+        elif key in before.rejected_keys or key in after.rejected_keys:
+            status[key] = INVALID
+        elif key not in before_index:
+            status[key] = ADDED
+            added.append(after_index[key])
+        elif key not in after_index:
+            status[key] = REMOVED
+            removed.append(before_index[key])
+        else:
+            old, new = before_index[key].values, after_index[key].values
+            found = [
+                ValueChange(
+                    key,
+                    column.name,
+                    old[column.name],
+                    new[column.name],
+                    difference(column, old[column.name], new[column.name]),
+                )
+                for column in compared
+                if as_text(old[column.name]) != as_text(new[column.name])
+            ]
+            status[key] = MODIFIED if found else UNCHANGED
+            changes.extend(found)
+
+    result = CompareResult(
+        profile=profile,
+        before=before,
+        after=after,
+        compared_columns=[column.name for column in compared],
+        skipped_columns=skipped,
+        status=status,
+        added=added,
+        removed=removed,
+        changes=changes,
+        issues=issues,
+    )
+    check_comparison(result)
+    return result
+
+
+def check_comparison(result):
+    """
+    cross-checks comparison counts before anything is written
+    :param result: compare result
+    :returns: none
+    """
+    counts = result.counts()
+    before_keys = {record.key for record in result.before.records}
+    after_keys = {record.key for record in result.after.records}
+    clean_before = before_keys - result.after.unresolved_keys
+    clean_after = after_keys - result.before.unresolved_keys
+    if counts["removed"] + counts["modified"] + counts["unchanged"] != len(
+        clean_before
+    ):
+        raise TabularIntegrityError("before records do not add up")
+    if counts["added"] + counts["modified"] + counts["unchanged"] != len(clean_after):
+        raise TabularIntegrityError("after records do not add up")
+    if counts["modified"] != len({change.key for change in result.changes}):
+        raise TabularIntegrityError("modified records do not match value changes")
