@@ -8,6 +8,7 @@ repository. Record file names, counts, and totals; never row values.
 - [ ] Files arrived through the approved channel and are stored in the customer's encrypted folder
 - [ ] `inspect` run; no unexpected file types or columns
 - [ ] `check-profile --input` is not `BLOCKED`; every warning has a decision recorded below
+- [ ] `check-profile --explain` reviewed: each mapped header, status label, and excluded status is the one agreed with the customer
 - [ ] No prohibited data (card, bank, government ID, credentials). If found, stop: [DATA_HANDLING.md](../DATA_HANDLING.md#unexpected-personal-data)
 - [ ] Period covered by the files matches the period requested: ______ to ______
 

@@ -1,0 +1,9 @@
+role,file,row,outcome,code,key,column,source_column,value,message
+before,inventory-before.csv,,Note,unmapped_columns,,,,,1 source column(s) not in the profile were left out of the outputs: Supplier Contact
+before,inventory-before.csv,44,Removed duplicate,duplicate_row,SKU-0042,,,,"identical to source row 43, which was kept"
+after,inventory-after.csv,,Note,unmapped_columns,,,,,1 source column(s) not in the profile were left out of the outputs: Supplier Contact
+after,inventory-after.csv,36,Rejected,missing_value,SKU-0048,quantity_on_hand,Qty On Hand,,required value is blank
+after,inventory-after.csv,59,Rejected,missing_value,,sku,Item SKU,,required value is blank
+after,inventory-after.csv,79,Rejected,missing_value,SKU-0025,unit_price,Unit Price,,required value is blank
+after,inventory-after.csv,119,Rejected,conflicting_key,SKU-0070,,,,business key is also on source row(s) 122 with different quantity_on_hand; no copy was chosen
+after,inventory-after.csv,122,Rejected,conflicting_key,SKU-0070,,,,business key is also on source row(s) 119 with different quantity_on_hand; no copy was chosen

@@ -1,0 +1,4 @@
+dataset,file,row,record_id,outcome,prevented_processing,code,field,value,message
+customers,customers.csv,3,00012346,Kept with warning,false,missing_name,name,,customer name is blank
+customers,customers.csv,3,00012346,Kept with warning,false,missing_phone,phone,,phone is blank
+orders,orders_2026-10.csv,6,ORD-2026-00009,Kept with warning,false,missing_customer_reference,customer_id,,order has no customer reference

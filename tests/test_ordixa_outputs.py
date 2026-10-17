@@ -9,6 +9,7 @@ from openpyxl import load_workbook
 from ordixa_golden import CLEAN_LEDGER, CLEAN_TOTALS
 from ordixa_helpers import EXPORTS_DIR, build_profile, copy_exports
 
+from app.ordixa import __version__
 from app.ordixa.manifest import (
     ISSUES_NAME,
     LEDGER_NAME,
@@ -299,7 +300,7 @@ def test_manifest_records_fingerprints_and_counts(clean_run):
     assert result["status"] == "completed"
     assert result["profile"]["name"] == "harbor-lane"
     assert result["profile"]["version"] == "1.0.0"
-    assert result["code_version"]["ordixa"] == "0.1.0"
+    assert result["code_version"]["ordixa"] == __version__
     assert result["row_counts"]["payments"]["accepted"] == 11
     assert result["issue_counts"] == {"error": 0, "warning": 0, "excluded": 0}
     assert result["totals"]["net_received"] == "3752.23"

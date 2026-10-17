@@ -229,6 +229,7 @@ def write_compare_run(result, out_dir, started_at=None):
     changes = change_rows(result)
     issues = issue_csv_rows(result.issues)
     counts = result.counts()
+    assessment = result.assessment()
     version = code_version()
     shared = base_result("compare", profile, result.inputs, result.issues, version)
 
@@ -241,6 +242,7 @@ def write_compare_run(result, out_dir, started_at=None):
                 "generated_at": started_at.strftime("%Y-%m-%d %H:%M:%S"),
                 "code_version": describe_version(version),
                 "status": shared["status"].replace("_", " "),
+                "assessment": assessment,
             },
         )
         write_csv(run_dir / ADDED_NAME, columns, added)
@@ -262,6 +264,9 @@ def write_compare_run(result, out_dir, started_at=None):
                     "after": result.after.counts(),
                 },
                 "comparison": counts,
+                # outside the fingerprint: it is derived from the counts and
+                # issues, and runs written before it existed must keep theirs
+                "assessment": assessment,
                 "artifact_rows": {
                     ADDED_NAME: len(added),
                     REMOVED_NAME: len(removed),

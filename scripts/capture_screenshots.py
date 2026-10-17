@@ -9,6 +9,9 @@ PyMuPDF (python -m pip install pymupdf). Every image comes from a real run:
   LibreOffice Calc. For width, each capture uses a copy of the workbook in
   which some columns are left out and the page is A3; the remaining cells
   are untouched. Captions in docs/DEMO.md name the hidden columns.
+- comparison summary: the first page of the unmodified comparison_report.xlsx
+  from the fictional inventory comparison, exported to PNG by LibreOffice
+  Calc as is (no PyMuPDF step).
 - terminal images: the exact text printed by the inspect and demo commands,
   drawn in a monospace font. Nothing is retyped or edited; the scratch run
   directory is shown as output/demo, the demo's default location.
@@ -34,6 +37,9 @@ from app.ordixa.inspection import DEFAULT_MAX_ROWS, format_report, inspect_path
 from app.ordixa.manifest import WORKBOOK_NAME, write_run_outputs
 from app.ordixa.pipeline import process
 from app.ordixa.profile import load_profile
+from app.ordixa.tabular import compare_tables
+from app.ordixa.tabular_outputs import REPORT_NAME, write_compare_run
+from app.ordixa.tabular_profile import load_table_profile
 
 ROOT = Path(__file__).resolve().parents[1]
 
@@ -153,6 +159,32 @@ def crop_page(page, target):
     page.get_pixmap(matrix=pymupdf.Matrix(zoom, zoom), clip=clip).save(target)
 
 
+def capture_change_report(work_dir, target):
+    """
+    exports the first page of a real comparison workbook to PNG, unmodified
+    :param work_dir: scratch directory
+    :param target: output PNG path
+    :returns: none
+    """
+    profile = load_table_profile(
+        ROOT / "examples/ordixa/profiles/inventory-compare.toml"
+    )
+    exports = ROOT / "examples/ordixa/exports/inventory"
+    result = compare_tables(
+        profile, exports / "inventory-before.csv", exports / "inventory-after.csv"
+    )
+    run_dir, _ = write_compare_run(result, work_dir / "compare")
+    copy = work_dir / f"{target.stem}.xlsx"
+    shutil.copyfile(run_dir / REPORT_NAME, copy)
+    subprocess.run(
+        [soffice(), "--headless", "--convert-to", "png", "--outdir", str(work_dir)]
+        + [str(copy)],
+        check=True,
+        capture_output=True,
+    )
+    shutil.copyfile(work_dir / f"{target.stem}.png", target)
+
+
 def render_terminal(command, output, target, highlight):
     """
     draws captured command output as a dark terminal panel
@@ -245,6 +277,9 @@ def main():
                 IMAGES / file_name,
             )
             print(f"wrote docs/images/{file_name}")
+
+        capture_change_report(work_dir, IMAGES / "workbook-change-summary.png")
+        print("wrote docs/images/workbook-change-summary.png")
 
         report = format_report(inspect_path(demo.DEMO_INPUT), DEFAULT_MAX_ROWS)
         render_terminal(

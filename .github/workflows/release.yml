@@ -1,0 +1,78 @@
+name: Release validation
+
+# Validates a release candidate; it never publishes anything. Releases are
+# tagged and published by a maintainer after this workflow and CI pass (see
+# docs/RELEASING.md). Read-only permissions and no secrets, so running it on
+# pull-request code is safe.
+on:
+  push:
+    tags: ["v*"]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "Existing tag to validate, such as v2.0.0"
+        required: true
+
+permissions:
+  contents: read
+
+concurrency:
+  group: release-validation-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  ci:
+    # release branches only; ordinary pull requests already run CI
+    if: github.event_name != 'pull_request' || startsWith(github.head_ref, 'release/')
+    uses: ./.github/workflows/ci.yml
+
+  release-checks:
+    if: github.event_name != 'pull_request' || startsWith(github.head_ref, 'release/')
+    runs-on: ubuntu-latest
+    env:
+      TAG: ${{ github.event_name == 'workflow_dispatch' && inputs.tag || (github.ref_type == 'tag' && github.ref_name || '') }}
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v6
+        with:
+          ref: ${{ github.event_name == 'workflow_dispatch' && inputs.tag || '' }}
+
+      - name: Set up Python
+        uses: actions/setup-python@v6
+        with:
+          python-version: "3.14"
+
+      - name: Clean runtime installation
+        run: |
+          python -m venv "$RUNNER_TEMP/ordixa"
+          "$RUNNER_TEMP/ordixa/bin/python" -m pip install --upgrade pip
+          "$RUNNER_TEMP/ordixa/bin/python" -m pip install -r requirements.txt
+          "$RUNNER_TEMP/ordixa/bin/python" -m pip check
+
+      - name: Release checks
+        run: |
+          if [ -n "$TAG" ]; then
+            "$RUNNER_TEMP/ordixa/bin/python" -m scripts.release_check --tag "$TAG"
+          else
+            "$RUNNER_TEMP/ordixa/bin/python" -m scripts.release_check
+          fi
+
+      - name: Workflows from the clean installation
+        run: |
+          py="$RUNNER_TEMP/ordixa/bin/python"
+          test "$("$py" -m app.ordixa --version)" = "ordixa $("$py" -c 'from app.ordixa import __version__; print(__version__)')"
+          "$py" -m app.ordixa.demo --out output/release-demo
+          "$py" -m app.ordixa verify --run "$(find output/release-demo -mindepth 1 -maxdepth 1 -name 'run-*' -type d)" --input examples/ordixa/exports/demo
+          "$py" -m app.ordixa.inventory_demo --out output/release-inventory
+          for run in output/release-inventory/clean/run-* output/release-inventory/compare/run-*; do
+            "$py" -m app.ordixa verify --run "$run" --input examples/ordixa/exports/inventory
+          done
+          test -z "$(find output -name '.run-*')"
+          test -z "$(git status --porcelain)"
+
+      - name: Dependency audit
+        run: |
+          python -m pip install pip-audit==2.9.0
+          pip-audit --requirement requirements.txt --requirement requirements-dev.txt

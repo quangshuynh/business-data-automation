@@ -1,0 +1,21 @@
+sku,column,before,after,difference
+000125,unit_price,22.96,23.26,0.30
+000131,quantity_on_hand,16,40,24
+000134,quantity_on_hand,52,46,-6
+BRM-003,unit_price,2.88,3.38,0.50
+BRM-005,quantity_on_hand,33,48,15
+BRM-008,unit_price,3.18,2.93,-0.25
+SKU-0002,quantity_on_hand,8,5,-3
+SKU-0004,unit_price,88.51,89.51,1.00
+SKU-0004,quantity_on_hand,16,26,10
+SKU-0010,unit_price,20.27,17.77,-2.50
+SKU-0017,quantity_on_hand,17,12,-5
+SKU-0021,unit_price,54.12,54.87,0.75
+SKU-0029,quantity_on_hand,21,33,12
+SKU-0035,unit_price,80.63,85.63,5.00
+SKU-0044,quantity_on_hand,62,61,-1
+SKU-0050,unit_price,68.20,68.19,-0.01
+SKU-0061,quantity_on_hand,77,97,20
+SKU-0066,category,Hardware,Outdoor,
+SKU-0077,quantity_on_hand,52,45,-7
+SKU-0083,product_name,Coastal Enamel Mug,Coastal Enamel mug,

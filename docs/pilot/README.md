@@ -26,7 +26,7 @@ the scope template is not a legally reviewed contract.
 | 4 | Customer receives minimization instructions | operator | [OVERVIEW.md](OVERVIEW.md#what-you-send), [DATA_HANDLING.md](../DATA_HANDLING.md#receiving-files) |
 | 5 | Files arrive through the approved channel | customer | [DATA_DECISIONS.md](DATA_DECISIONS.md) item 1 |
 | 6 | Ordixa inspects the files | operator | `inspect` |
-| 7 | Operator writes or validates the customer's profile | operator | `check-profile`, then `check-profile --input` |
+| 7 | Operator writes or validates the customer's profile | operator | `check-profile --explain`, then `check-profile --input` |
 | 8 | Ordixa processes the batch | operator | `run` |
 | 9 | Operator reviews results and exceptions independently | operator | [DELIVERY_CHECKLIST.md](DELIVERY_CHECKLIST.md) part B |
 | 10 | Customer receives the workbook and a short explanation | operator | [DELIVERY_CHECKLIST.md](DELIVERY_CHECKLIST.md) part C |
@@ -45,8 +45,10 @@ python -m app.ordixa run --profile ~/ordixa-customers/acme/acme.toml \
 `inspect` describes unfamiliar files before a profile exists.
 `check-profile --input` is the [pilot preflight](../ORDIXA.md#pilot-preflight):
 it lists every missing file, missing column, and unused personal-data column at
-once, and summarizes row outcomes without writing anything. Repeat it until
-it is not `BLOCKED`, then `run`. Neither command prints cell values, but the
+once, and summarizes row outcomes without writing anything. Add `--explain`
+to confirm which source header feeds each field and which status labels the
+profile maps before trusting the result. Repeat it until it is not
+`BLOCKED`, then `run`. Neither command prints cell values, but the
 workbook and `rejected_rows.csv` do contain customer data.
 
 ## Ground rules

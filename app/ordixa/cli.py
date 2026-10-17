@@ -2,10 +2,17 @@ import argparse
 import json
 import os
 import sys
+from collections import Counter
 from datetime import datetime, timezone
 from pathlib import Path
 
 from app.ordixa import __version__
+from app.ordixa.explain import (
+    explain_reconciliation_profile,
+    explain_table_profile,
+    format_reconciliation_explanation,
+    format_table_explanation,
+)
 from app.ordixa.inspection import (
     DEFAULT_MAX_ROWS,
     MAX_PREVIEW_ROWS,
@@ -21,18 +28,24 @@ from app.ordixa.manifest import (
 )
 from app.ordixa.pipeline import ReconciliationIntegrityError, process
 from app.ordixa.preflight import (
-    PERSONAL_HEADER,
     PROHIBITED_HEADER,
     format_preflight,
+    looks_personal,
     preflight,
 )
 from app.ordixa.profile import ProfileError, load_profile, read_profile_document
+from app.ordixa.table_preflight import (
+    format_table_preflight,
+    read_headers,
+    table_preflight,
+)
 from app.ordixa.tabular import (
     TabularIntegrityError,
     clean_table,
     compare_tables,
 )
 from app.ordixa.tabular_outputs import (
+    CLEAN_ISSUES_NAME,
     CLEANED_NAME,
     REPORT_NAME,
     write_clean_run,
@@ -136,15 +149,32 @@ def build_parser():
     parser = argparse.ArgumentParser(
         prog="python -m app.ordixa",
         description=(
-            "Profile-driven import, validation, and reconciliation, plus "
-            "spreadsheet cleaning and comparison."
+            "Ordixa: less busywork, more clarity. Profile-driven spreadsheet "
+            "cleaning, dataset comparison, and order/payment reconciliation, "
+            "with auditable run directories."
         ),
+        epilog=MAIN_EPILOG,
+        formatter_class=argparse.RawDescriptionHelpFormatter,
     )
     parser.add_argument("--version", action="version", version=f"ordixa {__version__}")
-    commands = parser.add_subparsers(dest="command", required=True)
+    commands = parser.add_subparsers(dest="command", required=True, metavar="COMMAND")
 
-    run = commands.add_parser(
-        "run", help="process an export directory and write a run directory"
+    def command(name, help_text, description=None):
+        return commands.add_parser(
+            name,
+            help=help_text,
+            description=description or help_text[0].upper() + help_text[1:] + ".",
+            epilog=EXAMPLES[name],
+            formatter_class=argparse.RawDescriptionHelpFormatter,
+        )
+
+    run = command(
+        "run",
+        "reconcile an export directory and write a run directory",
+        "Reads the orders, payments, and optional customers exports a "
+        "reconciliation profile describes, reconciles payments to orders by "
+        "exact order identifier, and writes an exceptions workbook, CSV "
+        "artifacts, and a manifest into a new run directory. Inputs are only read.",
     )
     run.add_argument("--profile", required=True, type=Path, help="TOML profile")
     run.add_argument(
@@ -157,33 +187,49 @@ def build_parser():
         help="parent directory; each run creates a new run-<id> folder inside it",
     )
 
-    check = commands.add_parser(
+    check = command(
         "check-profile",
-        help="validate a profile, optionally against a batch of exports",
-        description=(
-            "Validates the profile. With --input, also runs a read-only pilot "
-            "preflight: every missing file, missing column, unused or "
-            "personal-data column, and row-outcome count, without writing files "
-            "or printing cell values."
-        ),
+        "validate a profile and preview it against exports, read-only",
+        "Validates a profile of any kind. With --input (or --before/--after for "
+        "a compare profile), also runs a read-only preflight that processes the "
+        "files in memory and reports every missing file or column, unexpected "
+        "or sensitive-looking header, normalization risk, and row-outcome "
+        "count at once. --explain adds how the profile maps and normalizes each "
+        "column. Nothing is written and no cell values are printed; exit code 3 "
+        "means the preflight is blocked.",
     )
     check.add_argument("--profile", required=True, type=Path, help="TOML profile")
     check.add_argument(
-        "--input", type=Path, help="export directory to preflight against the profile"
+        "--input",
+        type=Path,
+        help=(
+            "export directory (reconciliation) or file (clean/compare) to "
+            "preflight against the profile"
+        ),
+    )
+    check.add_argument(
+        "--before", type=Path, help="earlier export, to preview a comparison"
+    )
+    check.add_argument("--after", type=Path, help="later export, with --before")
+    check.add_argument(
+        "--explain",
+        action="store_true",
+        help=(
+            "also explain the column mapping and normalization rules the profile "
+            "applies; still read-only and never prints cell values"
+        ),
     )
     check.add_argument(
         "--json", action="store_true", help="print the preflight report as JSON"
     )
 
-    clean = commands.add_parser(
+    clean = command(
         "clean",
-        help="clean one CSV/XLSX table with a clean profile",
-        description=(
-            "Maps, trims, and types every column the profile declares, removes "
-            "exact duplicate rows, holds back rows with invalid or conflicting "
-            "values, and writes cleaned_data.csv, cleaning_issues.csv, and a "
-            "manifest into a new run directory. The input is only read."
-        ),
+        "clean one CSV/XLSX table with a clean profile",
+        "Maps, trims, and types every column the profile declares, removes "
+        "exact duplicate rows, holds back rows with invalid or conflicting "
+        "values, and writes cleaned_data.csv, cleaning_issues.csv, and a "
+        "manifest into a new run directory. The input is only read.",
     )
     clean.add_argument("--profile", required=True, type=Path, help="TOML profile")
     clean.add_argument("--input", required=True, type=Path, help="CSV/XLSX file")
@@ -194,14 +240,13 @@ def build_parser():
         help="parent directory; each run creates a new run-<id> folder inside it",
     )
 
-    compare = commands.add_parser(
+    compare = command(
         "compare",
-        help="compare two versions of a table by business key",
-        description=(
-            "Cleans both files with the profile's rules, matches records by the "
-            "declared business key only, and writes a change report workbook, "
-            "CSV artifacts, and a manifest into a new run directory."
-        ),
+        "compare two versions of a table by business key",
+        "Cleans both files with the profile's rules, matches records by the "
+        "declared business key only, and writes a change report workbook, CSV "
+        "artifacts, and a manifest into a new run directory. Every comparison "
+        "is assessed as complete, complete with warnings, or incomplete.",
     )
     compare.add_argument("--profile", required=True, type=Path, help="TOML profile")
     compare.add_argument("--before", required=True, type=Path, help="earlier export")
@@ -213,13 +258,13 @@ def build_parser():
         help="parent directory; each run creates a new run-<id> folder inside it",
     )
 
-    verify = commands.add_parser(
+    verify = command(
         "verify",
-        help="re-check a finished run directory against its manifest",
-        description=(
-            "Read-only. Recomputes output checksums, sizes, CSV row counts, and "
-            "optionally input checksums, and confirms workbooks have no formulas."
-        ),
+        "re-check a finished run directory against its manifest",
+        "Read-only. Recomputes output checksums, sizes, CSV row counts, and "
+        "optionally input checksums, and confirms workbooks have no formulas. "
+        "Works for runs of every workflow, including runs written by earlier "
+        "versions.",
     )
     verify.add_argument("--run", required=True, type=Path, help="run-<id> directory")
     verify.add_argument(
@@ -232,13 +277,11 @@ def build_parser():
         ),
     )
 
-    inspect = commands.add_parser(
+    inspect = command(
         "inspect",
-        help="describe unfamiliar CSV/XLSX exports before writing a profile",
-        description=(
-            "Read-only. Reports worksheets, headers, row counts, and suggested "
-            "column types without printing cell values or writing any files."
-        ),
+        "describe unfamiliar CSV/XLSX exports before writing a profile",
+        "Read-only. Reports worksheets, headers, row counts, and suggested "
+        "column types without printing cell values or writing any files.",
     )
     inspect.add_argument(
         "--input", required=True, type=Path, help="export file or directory"
@@ -264,6 +307,79 @@ def build_parser():
     )
     inspect.add_argument("--json", action="store_true", help="print the report as JSON")
     return parser
+
+
+P = "examples/ordixa/profiles"
+X = "examples/ordixa/exports"
+EXAMPLES = {
+    "inspect": f"""examples:
+  python -m app.ordixa inspect --input {X}/text-ids
+  python -m app.ordixa inspect --input {X}/inventory/inventory-before.csv --json""",
+    "check-profile": f"""examples:
+  python -m app.ordixa check-profile --profile {P}/harbor-lane.toml --explain
+  python -m app.ordixa check-profile --profile {P}/harbor-lane.toml \\
+      --input {X}/pilot/3-final-delivery
+  python -m app.ordixa check-profile --profile {P}/inventory-clean.toml \\
+      --input {X}/inventory/inventory-after.csv --explain
+  python -m app.ordixa check-profile --profile {P}/inventory-compare.toml \\
+      --before {X}/inventory/inventory-before.csv \\
+      --after {X}/inventory/inventory-after.csv""",
+    "run": f"""examples:
+  python -m app.ordixa run --profile {P}/harbor-lane.toml \\
+      --input {X}/problematic --out output/runs""",
+    "clean": f"""examples:
+  python -m app.ordixa clean --profile {P}/inventory-clean.toml \\
+      --input {X}/inventory/inventory-before.csv --out output/clean""",
+    "compare": f"""examples:
+  python -m app.ordixa compare --profile {P}/inventory-compare.toml \\
+      --before {X}/inventory/inventory-before.csv \\
+      --after {X}/inventory/inventory-after.csv --out output/compare""",
+    "verify": f"""examples:
+  python -m app.ordixa verify --run output/runs/run-<id> --input {X}/problematic
+  python -m app.ordixa verify --run output/compare/run-<id> \\
+      --input {X}/inventory""",
+}
+MAIN_EPILOG = """workflows:
+  reconcile  inspect -> check-profile --input DIR -> run -> verify
+  clean      inspect -> check-profile --input FILE -> clean -> verify
+  compare    check-profile --before A --after B -> compare -> verify
+
+exit codes:
+  0  success (rows may still have been rejected; read the summary)
+  1  unexpected error; details withheld unless ORDIXA_DEBUG=1
+  2  usage or profile error
+  3  input error, or a blocked preflight
+  4  integrity check failed; nothing was written
+  5  output location refused or not writable
+
+Run "python -m app.ordixa COMMAND --help" for examples. Docs: docs/ORDIXA.md
+"""
+
+
+def quoted(path):
+    """
+    formats a path for a command the operator can copy
+    :param path: path
+    :returns: text, double-quoted when it contains spaces
+    """
+    text = str(path)
+    return f'"{text}"' if " " in text else text
+
+
+def report_next_step(run_dir, inputs):
+    """
+    prints where the run is and the command that verifies it
+    :param run_dir: published run directory
+    :param inputs: input directories or files the run read
+    :returns: none
+    """
+    locations = list(dict.fromkeys(inputs))
+    report(f"run directory: {run_dir}")
+    report(
+        "verify before delivering: python -m app.ordixa verify --run "
+        f"{quoted(run_dir)}"
+        + "".join(f" --input {quoted(location)}" for location in locations)
+    )
 
 
 def positive_int(text):
@@ -309,59 +425,112 @@ def check_profile_command(args):
     :param args: parsed arguments
     :returns: exit code
     """
-    if args.json and args.input is None:
-        report("--json needs --input", sys.stderr)
+    pair = (args.before, args.after)
+    if any(pair) and not all(pair):
+        report("--before and --after must be given together", sys.stderr)
+        return EXIT_USAGE
+    if all(pair) and args.input is not None:
+        report("use either --input or --before/--after, not both", sys.stderr)
+        return EXIT_USAGE
+    if args.json and args.input is None and not all(pair) and not args.explain:
+        report("--json needs --input, --before/--after, or --explain", sys.stderr)
         return EXIT_USAGE
     document, _ = read_profile_document(args.profile)
     if is_table_profile_document(document):
         return check_table_profile(args)
+    if all(pair):
+        report(
+            "--before/--after preview a compare profile; this is a reconciliation "
+            "profile, so use --input with the export directory",
+            sys.stderr,
+        )
+        return EXIT_USAGE
+
     profile = load_profile(args.profile)
+    explanation = explain_reconciliation_profile(profile) if args.explain else None
     if not args.json:
         # keeps --json output parseable as a single document
         report(f"profile {profile.name} {profile.version} is valid")
+        if explanation is not None:
+            print(format_reconciliation_explanation(explanation))
     if args.input is None:
+        if args.json:
+            print(json.dumps({"explain": explanation}, indent=2, ensure_ascii=False))
         return EXIT_OK
 
     warn_about_input_location(args.input)
     result = preflight(profile, args.input)
     if args.json:
+        if explanation is not None:
+            result["explain"] = explanation
         print(json.dumps(result, indent=2, ensure_ascii=False))
     else:
+        if explanation is not None:
+            print()
         print(format_preflight(result))
     return EXIT_INPUT if result["readiness"] == "blocked" else EXIT_OK
 
 
 def check_table_profile(args):
     """
-    validates a clean/compare profile and optionally dry-runs it on one file
+    validates a clean/compare profile and optionally preflights it on files
     :param args: parsed check-profile arguments
     :returns: exit code
     """
     profile = load_table_profile(args.profile)
+    if args.before is not None and profile.kind != "compare":
+        report(
+            f"--before/--after preview a comparison; this is a {profile.kind} "
+            "profile, so use --input with one file",
+            sys.stderr,
+        )
+        return EXIT_USAGE
+    if args.before is not None:
+        inputs = [("before", args.before), ("after", args.after)]
+    elif args.input is not None:
+        inputs = [("input", args.input)]
+    else:
+        inputs = []
+
     if not args.json:
         report(f"profile {profile.name} {profile.version} ({profile.kind}) is valid")
-    if args.input is None:
-        return EXIT_OK
+    for _, path in inputs:
+        warn_about_input_location(path.parent)
+    result = table_preflight(profile, inputs) if inputs else None
+    explanation = None
+    if args.explain:
+        explanation = explain_table_profile(profile, read_headers(profile, inputs))
 
-    warn_about_input_location(args.input.parent)
-    result = clean_table(profile, args.input)
-    counts = {
-        **result.counts(),
-        "issues": {
-            code: sum(1 for issue in result.issues if issue.code == code)
-            for code in sorted({issue.code for issue in result.issues})
-        },
-    }
     if args.json:
-        print(json.dumps(counts, indent=2))
+        document = {}
+        if args.input is not None and result["inputs"][0]["counts"] is not None:
+            document = legacy_dry_run(profile, args.input)
+        document.update(result or {})
+        if explanation is not None:
+            document["explain"] = explanation
+        print(json.dumps(document, indent=2, ensure_ascii=False))
     else:
-        warn_about_headers(result.header, profile)
-        for name, value in counts.items():
-            if name != "issues":
-                print(f"  {name.replace('_', ' ')}: {value}")
-        for code, count in counts["issues"].items():
-            print(f"  issue {code}: {count}")
+        if explanation is not None:
+            print(format_table_explanation(explanation))
+        if result is not None:
+            if explanation is not None:
+                print()
+            print(format_table_preflight(result))
+    if result is not None and result["readiness"] == "blocked":
+        return EXIT_INPUT
     return EXIT_OK
+
+
+def legacy_dry_run(profile, path):
+    """
+    builds the single-file JSON keys check-profile printed before 2.0.0
+    :param profile: table profile
+    :param path: input file
+    :returns: row counts plus issue counts by code
+    """
+    result = clean_table(profile, path)
+    issues = Counter(issue.code for issue in result.issues)
+    return {**result.counts(), "issues": dict(sorted(issues.items()))}
 
 
 def verify_command(args):
@@ -372,6 +541,10 @@ def verify_command(args):
     """
     if not (args.run / MANIFEST_NAME).is_file():
         report(f"input error: {args.run / MANIFEST_NAME} does not exist", sys.stderr)
+        report(
+            "hint: --run takes one run-<id> directory, not its parent output folder",
+            sys.stderr,
+        )
         return EXIT_INPUT
     for location in args.input or ():
         if not location.exists():
@@ -386,6 +559,11 @@ def verify_command(args):
         report(f"{failed} of {len(checks)} checks failed; do not deliver this run")
         return EXIT_INTEGRITY
     report(f"all {len(checks)} checks passed")
+    if not args.input:
+        report(
+            "inputs were not checked; add --input with the original exports to "
+            "confirm they are unchanged"
+        )
     return EXIT_OK
 
 
@@ -399,6 +577,8 @@ def run_command(args):
     profile = load_profile(args.profile)
     report(f"profile {profile.name} {profile.version} is valid")
 
+    if not args.input.is_dir():
+        raise InputError(f"input directory not found: {args.input}")
     check_output_location(args.out, args.input)
     warn_about_input_location(args.input)
     result = process(profile, args.input)
@@ -411,6 +591,7 @@ def run_command(args):
 
     run_dir, manifest = write_run_outputs(result, args.out, started_at)
     report_run(result, run_dir, manifest)
+    report_next_step(run_dir, [args.input])
     return EXIT_OK
 
 
@@ -437,7 +618,7 @@ def warn_about_headers(header, profile):
                 f"credential data; {where}. Ask for an export without it",
                 sys.stderr,
             )
-        elif name in mapped and PERSONAL_HEADER.search(name):
+        elif name in mapped and looks_personal(name):
             report(
                 f"note: mapped column {name!r} may hold personal data; outputs "
                 "will contain it",
@@ -483,7 +664,9 @@ def clean_command(args):
         f"{counts['conflicting_keys']} conflicting key(s)"
     )
     report(f"cleaned data: {run_dir / CLEANED_NAME}")
+    report(f"held-back rows and reasons: {run_dir / CLEAN_ISSUES_NAME}")
     report(f"manifest: {run_dir / MANIFEST_NAME} ({manifest['result']['status']})")
+    report_next_step(run_dir, [args.input])
     return EXIT_OK
 
 
@@ -513,9 +696,39 @@ def compare_command(args):
         f"invalid key(s), {counts['unkeyed_rejected_rows']} rejected row(s) "
         "without a key"
     )
+    report_assessment(manifest["result"]["assessment"])
     report(f"change report: {run_dir / REPORT_NAME}")
     report(f"manifest: {run_dir / MANIFEST_NAME} ({manifest['result']['status']})")
+    sources = (
+        [args.before.parent]
+        if args.before.parent.resolve() == args.after.parent.resolve()
+        else [args.before, args.after]
+    )
+    report_next_step(run_dir, sources)
     return EXIT_OK
+
+
+ASSESSMENT_TEXT = {
+    "complete": "COMPLETE: every record was classified and every column compared",
+    "complete_with_warnings": (
+        "COMPLETE WITH WARNINGS: every record was classified; review the warnings"
+    ),
+    "incomplete": (
+        "INCOMPLETE: some records or columns could not be compared; unchanged "
+        "does not cover them"
+    ),
+}
+
+
+def report_assessment(assessment):
+    """
+    prints how far a comparison can be trusted, without cell values
+    :param assessment: dictionary from CompareResult.assessment
+    :returns: none
+    """
+    report(f"comparison {ASSESSMENT_TEXT[assessment['level']]}")
+    for item in assessment["findings"]:
+        report(f"  {item['level']}: {item['message']}")
 
 
 def report_run(result, run_dir, manifest):
@@ -547,6 +760,22 @@ def report_run(result, run_dir, manifest):
     report(f"manifest: {run_dir / MANIFEST_NAME} ({manifest['result']['status']})")
 
 
+INPUT_HINTS = {
+    "run": (
+        "hint: check-profile --profile PROFILE --input DIR lists every problem in "
+        "the batch at once, without writing anything"
+    ),
+    "clean": (
+        "hint: check-profile --profile PROFILE --input FILE lists every problem "
+        "at once, without writing anything"
+    ),
+    "compare": (
+        "hint: check-profile --profile PROFILE --before FILE --after FILE lists "
+        "every problem at once, without writing anything"
+    ),
+}
+
+
 def main(argv=None):
     """
     command line entry point
@@ -572,6 +801,9 @@ def main(argv=None):
         return EXIT_USAGE
     except InputError as error:
         report(f"input error: {error}", sys.stderr)
+        hint = INPUT_HINTS.get(args.command)
+        if hint:
+            report(hint, sys.stderr)
         return EXIT_INPUT
     except (ReconciliationIntegrityError, TabularIntegrityError) as error:
         report(f"integrity check failed, no outputs written: {error}", sys.stderr)

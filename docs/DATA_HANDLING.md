@@ -40,8 +40,10 @@ They are collected, with suggested defaults, in the approval checklist
    Then run `check-profile --profile <profile> --input <directory>`: the
    [pilot preflight](ORDIXA.md#pilot-preflight) flags unused columns whose
    headers suggest personal data, and blocks on headers that suggest card,
-   bank, government ID, or credential data. Both are header heuristics;
-   they do not prove a file is minimized.
+   bank, government ID, or credential data. For a clean or compare profile,
+   `check-profile --input <file>` (or `--before`/`--after`) applies the same
+   header checks and also blocks when such a header is mapped. These are
+   header heuristics; they do not prove a file is minimized.
 3. Accept files only through a channel with access control and encryption in
    transit, such as a shared folder restricted to named people or an
    encrypted archive whose password is sent through a different channel.
@@ -141,5 +143,5 @@ expected):
 - [ ] Encrypted storage location prepared, outside the repository or in `customer-data/`
 - [ ] Retention period and backup decision agreed with the customer in writing
 - [ ] Customer told which columns to remove before sending
-- [ ] Export checked with `inspect` and the batch with `check-profile --input`
+- [ ] Export checked with `inspect` and the batch with `check-profile --input` (and `--explain`)
 - [ ] Escalation contact for unexpected personal data identified

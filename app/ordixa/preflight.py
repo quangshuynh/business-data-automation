@@ -50,6 +50,23 @@ PERSONAL_HEADER = re.compile(
     r"tag|marketing|consent|\bip\b|device|gender",
     re.IGNORECASE,
 )
+# names of things rather than people, such as Product Name or Supplier Name
+BUSINESS_NAME_HEADER = re.compile(
+    r"^(product|item|sku|category|company|business|store|shop|brand|supplier|"
+    r"vendor|warehouse|location|department|plan)[ _-]?(name|title)$",
+    re.IGNORECASE,
+)
+
+
+def looks_personal(header):
+    """
+    applies the personal-data header heuristic, skipping names of things
+    :param header: source column name
+    :returns: true when the header suggests personal data
+    """
+    return bool(PERSONAL_HEADER.search(header)) and not BUSINESS_NAME_HEADER.match(
+        header.strip()
+    )
 
 
 def finding(level, code, message):
@@ -152,7 +169,7 @@ def check_file(path, spec, profile, findings):
                     "'Unexpected personal data' in docs/DATA_HANDLING.md",
                 )
             )
-        elif PERSONAL_HEADER.search(name):
+        elif looks_personal(name):
             findings.append(
                 finding(
                     REVIEW,
@@ -164,7 +181,7 @@ def check_file(path, spec, profile, findings):
     others = [
         name
         for name in summary["unused_columns"]
-        if not PROHIBITED_HEADER.search(name) and not PERSONAL_HEADER.search(name)
+        if not PROHIBITED_HEADER.search(name) and not looks_personal(name)
     ]
     if others:
         findings.append(

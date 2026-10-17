@@ -6,10 +6,19 @@ it reuses the reconciliation workbook's palette, cell writer, and print
 layout; every value goes through the same formula-injection guard
 """
 
+import math
+
 from openpyxl import Workbook
 from openpyxl.styles import Alignment, Font, PatternFill
 
-from app.ordixa.tabular import DUPLICATE_REMOVED, NOTE, REJECTED
+from app.ordixa.tabular import (
+    COMPLETE,
+    COMPLETE_WITH_WARNINGS,
+    DUPLICATE_REMOVED,
+    INCOMPLETE,
+    NOTE,
+    REJECTED,
+)
 from app.ordixa.workbook import (
     AMBER,
     BOLD_VALUE_FONT,
@@ -51,6 +60,22 @@ CHANGE_STYLES = {
     "removed": STATUS_STYLES["unpaid"][1:],
     "modified": STATUS_STYLES["overpaid"][1:],
     "attention": SEVERITY_STYLES["warning"],
+}
+ASSESSMENT_STYLES = {
+    COMPLETE: ("Complete", *STATUS_STYLES["paid"][1:]),
+    COMPLETE_WITH_WARNINGS: ("Complete with warnings", *SEVERITY_STYLES["warning"]),
+    INCOMPLETE: ("Incomplete", *SEVERITY_STYLES["error"]),
+}
+ASSESSMENT_GUIDANCE = {
+    COMPLETE: "Every record was classified and every configured column compared.",
+    COMPLETE_WITH_WARNINGS: (
+        "Every record was classified; review the warnings below before relying "
+        "on the categories."
+    ),
+    INCOMPLETE: (
+        "Some records or columns could not be compared; Unchanged does not cover "
+        "them. Fix the findings below and rerun."
+    ),
 }
 OUTCOME_STYLES = {
     REJECTED: SEVERITY_STYLES["error"],
@@ -155,6 +180,36 @@ def build_summary_sheet(sheet, result, metadata):
         sheet.cell(row=row, column=1, value=label).font = LABEL_FONT
         sheet.cell(row=row, column=2, value=text).font = VALUE_FONT
         row += 1
+
+    assessment = metadata["assessment"]
+    label, *style = ASSESSMENT_STYLES[assessment["level"]]
+
+    def wide_note(label, text, style=None):
+        # findings are sentences; merge B:E and wrap so they stay in the
+        # printed area instead of running off the right edge
+        nonlocal row
+        label_cell = sheet.cell(row=row, column=1, value=label)
+        label_cell.font = LABEL_FONT
+        if style:
+            chip(label_cell, style)
+        cell = write_cell(sheet, row, 2, text)
+        cell.font = VALUE_FONT
+        cell.alignment = Alignment(wrap_text=True, vertical="top")
+        label_cell.alignment = Alignment(vertical="top")
+        sheet.merge_cells(start_row=row, start_column=2, end_row=row, end_column=width)
+        sheet.row_dimensions[row].height = 15 * max(1, math.ceil(len(text) / 80))
+        row += 1
+
+    section("Comparison result")
+    line("Result", label, True)
+    chip(sheet.cell(row=row - 1, column=2), style)
+    wide_note("Meaning", ASSESSMENT_GUIDANCE[assessment["level"]])
+    for item in assessment["findings"]:
+        if item["level"] == INCOMPLETE:
+            wide_note("Incomplete", item["message"], SEVERITY_STYLES["error"])
+        else:
+            wide_note("Warning", item["message"], SEVERITY_STYLES["warning"])
+    row += 1
 
     section("Record counts")
     line("Original records (rows in earlier export)", counts["before_rows"])
@@ -345,7 +400,8 @@ def write_change_report(result, path, metadata):
     writes the comparison workbook
     :param result: compare result
     :param path: destination .xlsx path
-    :param metadata: execution metadata (run_id, generated_at, code_version, status)
+    :param metadata: execution metadata (run_id, generated_at, code_version,
+        status, assessment)
     :returns: destination path
     """
     workbook = Workbook()

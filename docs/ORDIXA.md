@@ -1,12 +1,16 @@
-# Ordixa: profile-driven imports and exceptions workbook
+# Ordixa reference: CLI and reconciliation
 
-Detailed reference for Ordixa: a tool that takes the order and payment
-exports a small business already has, maps them through a declared import
-profile, and produces a reviewable reconciliation workbook. It sits alongside
+Detailed reference for the Ordixa command line and its reconciliation
+workflow: taking the order and payment exports a small business already has,
+mapping them through a declared import profile, and producing a reviewable
+reconciliation workbook. The spreadsheet `clean` and `compare` workflows
+share this CLI and are documented in
+[SPREADSHEET_WORKFLOWS.md](SPREADSHEET_WORKFLOWS.md). Ordixa sits alongside
 the original Business Data Automation pipeline and reuses its validation
 helpers and reconciliation engine. The [README](../README.md) is the overview,
-[DEMO.md](DEMO.md) the guided walkthrough, and [DATA_HANDLING.md](DATA_HANDLING.md)
-the procedure for real customer files.
+[DEMO.md](DEMO.md) the guided walkthrough, [DATA_HANDLING.md](DATA_HANDLING.md)
+the procedure for real customer files, and
+[MIGRATING_TO_V2.md](MIGRATING_TO_V2.md) what changed in 2.0.0.
 
 Status: an early, tested foundation. It has been exercised only against the
 fictional exports in [`examples/ordixa`](../examples/ordixa). It is not
@@ -63,11 +67,16 @@ python -m app.ordixa compare --profile examples/ordixa/profiles/inventory-compar
 | Command | Purpose |
 | --- | --- |
 | `run` | reconcile a directory of order, payment, and customer exports |
-| `check-profile` | validate any profile; with `--input`, preflight a batch or dry-run a clean |
+| `check-profile` | validate any profile; preflight it read-only with `--input` (or `--before`/`--after` for a compare profile); `--explain` shows the mapping and normalization rules |
 | `inspect` | describe unfamiliar exports without printing cell values |
 | `verify` | re-check a finished run against its manifest; `--input` may repeat |
 | `clean` | standardize one CSV/XLSX table with a clean profile |
 | `compare` | report added, removed, and modified records between two exports |
+
+`python -m app.ordixa --version` prints the application version, and every
+command's `--help` ends with copyable examples. Successful `run`, `clean`,
+and `compare` commands finish with the run directory and the exact `verify`
+command for it.
 
 | Exit code | Meaning |
 | --- | --- |
@@ -233,6 +242,14 @@ an unusual name and can flag a harmless one. A clean preflight is not proof
 that the data is complete, minimized, or correct. Review the workbook and
 verify totals independently after the run. The pilot walkthrough in
 [pilot/SCENARIO.md](pilot/SCENARIO.md) shows preflight on three deliveries.
+
+Add `--explain` to see how the profile will read the batch before trusting
+it: each dataset's file patterns and worksheet, every source header mapped
+to each canonical field (with identifier mode and removed prefix), date
+formats, status and transaction-type labels, excluded statuses, refund
+sign, amount rules, and the matching rules. It works with or without
+`--input`, is included under `explain` with `--json`, prints no cell values,
+and never changes the preflight's result or exit code.
 
 ## Normalization rules
 
@@ -434,6 +451,11 @@ Interval 4 added the pilot preflight, the `verify` command, and the
 Interval 5 added the [spreadsheet `clean` and `compare`
 workflows](SPREADSHEET_WORKFLOWS.md) with their own table profiles; it did
 not change reconciliation results, manifests, or fingerprints.
+Release 2.0.0 brought these together as one product and added the read-only
+table preflight and `--explain`, the comparison result
+(complete/warnings/incomplete), clearer CLI summaries, and release checks. It
+did not change reconciliation, cleaning, or comparison results; see
+[MIGRATING_TO_V2.md](MIGRATING_TO_V2.md) and the [changelog](../CHANGELOG.md).
 
 ## Roadmap (not implemented)
 
