@@ -602,6 +602,15 @@ def validate_profile_document(document, source_path="<memory>", sha256=""):
     :param sha256: checksum of the profile file
     :returns: validated profile
     """
+    if "workflow" in document:
+        raise ProfileError(
+            [
+                "workflow: this is a spreadsheet clean/compare profile; use "
+                "python -m app.ordixa clean or compare instead of run"
+            ],
+            source_path,
+        )
+
     problems = []
     unknown_keys(document, TOP_LEVEL_KEYS, "", problems)
 
@@ -697,11 +706,11 @@ def validate_profile_document(document, source_path="<memory>", sha256=""):
     )
 
 
-def load_profile(path):
+def read_profile_document(path):
     """
-    loads and validates a TOML import profile
+    reads and parses a TOML profile file without validating it
     :param path: profile file path
-    :returns: validated profile
+    :returns: tuple of parsed document and SHA-256 of the file bytes
     """
     path = Path(path)
 
@@ -717,8 +726,14 @@ def load_profile(path):
     except tomllib.TOMLDecodeError as error:
         raise ProfileError([f"TOML syntax error: {error}"], path) from error
 
-    return validate_profile_document(
-        document,
-        source_path=path,
-        sha256=hashlib.sha256(raw).hexdigest(),
-    )
+    return document, hashlib.sha256(raw).hexdigest()
+
+
+def load_profile(path):
+    """
+    loads and validates a TOML import profile
+    :param path: profile file path
+    :returns: validated profile
+    """
+    document, sha256 = read_profile_document(path)
+    return validate_profile_document(document, source_path=Path(path), sha256=sha256)
