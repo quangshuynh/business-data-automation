@@ -1,0 +1,167 @@
+<!doctype html>
+<html>
+<head>
+<meta charset="utf-8">
+<style>
+  :root { --graphite:#111D22; --card:#1A2A30; --chart:#D9F17A; --off:#F2F4EF; --warn:#E6AE65;
+    --good:#8FD3A6; --red:#F08B7A; --muted:#3D4F55;
+    --sans:"Segoe UI",system-ui,sans-serif; --mono:Consolas,monospace; --sheet:Calibri,"Segoe UI",sans-serif; }
+  * { box-sizing:border-box; margin:0; padding:0; }
+  html,body { width:960px; height:540px; overflow:hidden; background:var(--graphite); }
+  body { font-family:var(--sans); color:var(--off); }
+  .abs { position:absolute; }
+  #main { position:absolute; inset:0; }
+  .hl { position:absolute; left:40px; top:26px; font-weight:600; font-size:38px; letter-spacing:-0.025em; white-space:nowrap; }
+  #h2 span { color:var(--red); }
+  #card { position:absolute; left:40px; right:40px; top:92px; background:var(--card); border:1px solid rgba(242,244,239,.12); border-radius:14px; overflow:hidden; }
+  .ch { display:flex; align-items:center; gap:12px; height:42px; padding:0 18px; border-bottom:1px solid rgba(242,244,239,.08); font-family:var(--mono); font-size:16px; color:rgba(242,244,239,.6); }
+  .ch b { color:var(--chart); font-weight:400; letter-spacing:.08em; }
+  .files { position:relative; height:20px; flex:1; }
+  .files span { position:absolute; left:0; top:0; white-space:nowrap; }
+  #fA { opacity:0; }
+  .state { margin-left:auto; position:relative; width:110px; height:28px; }
+  .state span { position:absolute; right:0; top:0; font-family:var(--sans); font-weight:700; font-size:15px; letter-spacing:.12em; padding:4px 12px; border-radius:999px; }
+  #stB { background:rgba(230,174,101,.18); color:var(--warn); }
+  #stA { background:rgba(217,241,122,.18); color:var(--chart); opacity:0; }
+  #wrap { position:relative; }
+  table { width:100%; border-collapse:collapse; table-layout:fixed; font-family:var(--sheet); font-size:24px; }
+  th { text-align:left; font-size:16.5px; font-weight:700; color:rgba(242,244,239,.55); padding:9px 11px; border-bottom:2px solid rgba(217,241,122,.5); white-space:nowrap; }
+  td { height:47px; padding:0 11px; white-space:pre; position:relative; border-bottom:1px solid rgba(242,244,239,.07); }
+  .r { text-align:right; }
+  .cell { position:relative; display:inline-block; }
+  .a, .b { display:inline-block; white-space:pre; }
+  .b { position:absolute; top:0; left:0; opacity:0; }
+  .r .b { left:auto; right:0; }
+  .blank { display:inline-block; width:60px; height:1em; }
+  .ws { background:rgba(230,174,101,.25); border-radius:3px; }
+  .ring { position:absolute; inset:5px 4px; border:2px solid var(--warn); border-radius:7px; }
+  .res { position:relative; height:32px; }
+  .res span { position:absolute; left:0; top:0; font-family:var(--sans); font-weight:700; font-size:18px; padding:4px 11px; border-radius:7px; white-space:nowrap; }
+  .tag { background:rgba(230,174,101,.2); color:var(--warn); }
+  .ok { background:rgba(143,211,166,.18); color:var(--good); opacity:0; }
+  .no { background:rgba(240,139,122,.18); color:var(--red); opacity:0; }
+  #scan { position:absolute; left:0; right:0; height:3px; background:var(--chart); opacity:0; z-index:5; }
+  #tot { position:absolute; left:40px; top:470px; display:flex; gap:14px; }
+  .tot { font-size:21px; padding:9px 16px; border-radius:11px; display:flex; gap:10px; align-items:baseline; }
+  .tot b { font-size:28px; font-weight:600; }
+  .g { background:rgba(143,211,166,.13); color:var(--good); }
+  .rr { background:rgba(240,139,122,.13); color:var(--red); }
+  .rr i { font-style:normal; color:rgba(242,244,239,.72); }
+  #brandbg { position:absolute; inset:0; background:var(--graphite); opacity:0; }
+  #brand { position:absolute; inset:0; display:flex; flex-direction:column; align-items:center; justify-content:center; gap:30px; opacity:0; }
+  #brand img { width:410px; }
+  #brand div { font-size:34px; font-weight:600; letter-spacing:-0.02em; color:var(--off); }
+  #brand div span { color:var(--chart); }
+</style>
+</head>
+<body>
+<div id="main">
+  <div class="hl" id="h1">Messy data in.</div>
+  <div class="hl" id="h2" style="opacity:0">Clean results. <span>Issues clearly flagged.</span></div>
+  <div id="card">
+    <div class="ch"><b>ORDIXA CLEAN</b><span class="files"><span id="fB">inventory-after.csv · 124 rows</span><span id="fA">cleaned_data.csv + cleaning_issues.csv</span></span><div class="state"><span id="stB">BEFORE</span><span id="stA">AFTER</span></div></div>
+    <div id="wrap"><div id="scan"></div><div id="tbl"></div></div>
+  </div>
+  <div id="tot"><div class="tot g" id="tg"><b>119</b>clean rows written</div><div class="tot rr" id="tr"><b>5</b>held back, <i>each with a reason</i></div></div>
+</div>
+<div id="brandbg"></div><div id="brand"><img src="ordixa-wordmark-dark.png"><div>Less busywork. <span>More clarity.</span></div></div>
+<script>
+const $ = s => document.querySelector(s), $$ = s => [...document.querySelectorAll(s)];
+const clamp = v => Math.max(0, Math.min(1, v));
+const eo = x => 1 - Math.pow(1 - x, 3);
+const prog = (t, a, d) => eo(clamp((t - a) / d));
+// real rows of inventory-after.csv and what `ordixa clean` did with them
+const ROWS = [
+  { c: ['Classic Garden Twine Spool', 'SKU-0009', '63', '$53.23', 'Garden'], bad: 3, fix: '53.23', tag: '$ in price', ok: '✓ Standardized' },
+  { c: ['Large Pocket Sketchbook   ', 'SKU-0030', '63', '60.86', 'Stationery'], bad: 0, fix: 'Large Pocket Sketchbook', ws: true, tag: 'extra spaces', ok: '✓ Trimmed' },
+  { c: ['Large Beeswax Candle Pair', 'SKU-0028', '32', '53.37', 'N/A'], bad: 4, fix: '', tag: '"N/A" as text', ok: '✓ Made blank' },
+  { c: ['Large Waxed Canvas Tote', 'SKU-0025', '59', '', 'Outdoor'], bad: 3, tag: 'missing price', no: '✕ Missing price' },
+  { c: ['Studio Pocket Sketchbook', 'SKU-0070', '22', '4.73', 'Stationery'], bad: 2, tag: 'duplicate SKU', no: '✕ SKU conflict' },
+  { c: ['Studio Pocket Sketchbook', 'SKU-0070', '26', '4.73', 'Stationery'], bad: 2, tag: 'duplicate SKU', no: '✕ SKU conflict' },
+];
+const R = [false, false, true, true, false];
+let h = '<table><colgroup>' + R.map(() => '<col>').join('') + '<col></colgroup><tr>' +
+  ['Product Name', 'Item SKU', 'Qty', 'Unit Price', 'Category', 'Result'].map((k, i) => `<th class="${R[i] ? 'r' : ''}">${k}</th>`).join('') + '</tr>';
+ROWS.forEach(r => {
+  h += '<tr class="row">';
+  r.c.forEach((v, i) => {
+    const bad = r.bad === i, fixed = bad && 'fix' in r;
+    let a = v === '' ? '<span class="blank"></span>' : v;
+    if (bad && r.ws) a = v.trimEnd() + '<span class="ws">' + v.slice(v.trimEnd().length) + '</span>';
+    const b = fixed ? (r.fix === '' ? '<span class="blank"></span>' : r.fix) : '';
+    h += `<td class="${R[i] ? 'r' : ''}">${bad ? '<div class="ring"></div>' : ''}<span class="cell${fixed ? ' fx' : ''}"><span class="a"${bad ? ' style="color:var(--warn)"' : ''}>${a}</span>${fixed ? `<span class="b">${b}</span>` : ''}</span></td>`;
+  });
+  h += `<td><div class="res"><span class="tag">${r.tag}</span><span class="${r.ok ? 'ok' : 'no'}">${r.ok || r.no}</span></div></td></tr>`;
+});
+$('#tbl').innerHTML = h + '</table>';
+// size data columns to their widest content (+ padding), give the rest to Result
+{
+  const tbl = $('#tbl table'), cols = $$('#tbl col');
+  tbl.style.tableLayout = 'auto'; tbl.style.width = 'auto';
+  const need = R.map((_, i) => Math.max(...$$('#tbl tr').map(tr => {
+    const c = tr.children[i]; const a = c.querySelector('.a');
+    return (a ? a.getBoundingClientRect().width + 22 : c.getBoundingClientRect().width) + 2;
+  })));
+  need.forEach((w, i) => cols[i].style.width = Math.ceil(w) + 'px');
+  tbl.style.tableLayout = 'fixed'; tbl.style.width = '100%';
+}
+// layout audit used by build.py: any text wider than its cell, or labels past the card edge
+window.audit = () => {
+  const bad = [], edge = $('#card').getBoundingClientRect().right;
+  $$('#tbl td, #tbl th').forEach(c => { if (c.scrollWidth > c.clientWidth + 1) bad.push('overflow: ' + c.textContent.trim()); });
+  $$('.res span').forEach(s => { if (s.getBoundingClientRect().right > edge - 8) bad.push('label past edge: ' + s.textContent); });
+  return bad;
+};
+
+const T0 = 1.3, T1 = 2.9;
+function table(t) {
+  const rows = $$('tr.row'), wrap = $('#wrap'), H = wrap.offsetHeight, hh = $('th').offsetHeight;
+  const sp = clamp((t - T0) / (T1 - T0));
+  $('#scan').style.top = (hh + sp * (H - hh)) + 'px';
+  $('#scan').style.opacity = t > T0 - 0.05 && t < T1 + 0.15 ? 1 - clamp((t - T1) / 0.15) : 0;
+  rows.forEach((r, i) => {
+    const d = ROWS[i];
+    const at = T0 + ((r.offsetTop + r.offsetHeight / 2 - hh) / (H - hh)) * (T1 - T0);
+    const k = prog(t, at, 0.3);
+    r.querySelectorAll('.fx').forEach(c => {
+      const ko = prog(t, at, 0.15), ki = prog(t, at + 0.1, 0.25);
+      const a = c.querySelector('.a'), b = c.querySelector('.b');
+      a.style.opacity = 1 - ko; a.style.transform = `translateY(${-ko * 10}px)`;
+      b.style.opacity = ki; b.style.transform = `translateY(${(1 - ki) * 10}px)`;
+    });
+    const ring = r.querySelector('.ring');
+    if (d.ok) { ring.style.opacity = 1 - k; }
+    else { ring.style.borderColor = k > 0.5 ? 'var(--red)' : 'var(--warn)'; r.querySelector('.a[style]').style.color = k > 0.5 ? 'var(--red)' : 'var(--warn)'; }
+    r.querySelectorAll('td').forEach((td, j) => {
+      if (j < 5) td.style.opacity = d.ok ? 1 : 1 - 0.42 * k;
+      td.style.background = d.ok ? `rgba(143,211,166,${0.06 * k})` : `rgba(240,139,122,${0.07 * k})`;
+    });
+    const tg = r.querySelector('.tag'), ch = r.querySelector('.ok, .no');
+    tg.style.opacity = 1 - prog(t, at, 0.12);
+    const kc = prog(t, at + 0.08, 0.25);
+    ch.style.opacity = kc; ch.style.transform = `translateX(${(1 - kc) * 12}px)`;
+  });
+  const kf = prog(t, T1 - 0.1, 0.3);
+  $('#stB').style.opacity = 1 - kf; $('#stA').style.opacity = kf;
+  $('#fB').style.opacity = 1 - kf; $('#fA').style.opacity = kf;
+  const kh = prog(t, T1 - 0.2, 0.35);
+  $('#h1').style.opacity = 1 - prog(t, T1 - 0.35, 0.2);
+  $('#h2').style.opacity = kh; $('#h2').style.transform = `translateY(${(1 - kh) * 12}px)`;
+  [['#tg', T1 + 0.05], ['#tr', T1 + 0.2]].forEach(([s, a]) => { const k = prog(t, a, 0.35); $(s).style.opacity = k; $(s).style.transform = `translateY(${(1 - k) * 12}px)`; });
+}
+function render(t) {
+  // 7.5 s loop. Table 0-5.45; the navy panel covers it, the brand holds, then the
+  // panel lifts to reveal the t=0 table. Everything stays on navy, so there is no
+  // flash; the logo has nearly faded when the table starts back, so there is neither
+  // a blank frame nor a visible double exposure.
+  $('#brandbg').style.opacity = Math.min(eo(clamp((t - 5.45) / 0.3)), 1 - eo(clamp((t - 6.85) / 0.6)));
+  $('#brand').style.opacity = Math.min(eo(clamp((t - 5.55) / 0.4)), 1 - eo(clamp((t - 6.8) / 0.25)));
+  const img = $('#brand img'), k = prog(t, 5.6, 0.6);
+  img.style.transform = `scale(${0.95 + 0.05 * k})`;
+  table(t < 5.8 ? t : 0);
+}
+window.render = render;
+window.ready = Promise.all([document.fonts.ready, ...[...document.images].map(i => i.complete ? 1 : new Promise(r => { i.onload = i.onerror = r; }))]);
+</script>
+</body>
+</html>

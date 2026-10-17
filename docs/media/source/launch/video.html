@@ -1,0 +1,531 @@
+<!doctype html>
+<html>
+<head>
+<meta charset="utf-8">
+<style>
+  :root {
+    --graphite: #111D22; --surface: #22343A; --chart: #D9F17A; --off: #F2F4EF;
+    --warn: #E6AE65; --muted: #3D4F55; --teal: #5C7A80;
+    --paid-bg: #E2EFE6; --paid: #1E4D35; --part-bg: #F7E6C8; --part: #5E3A0B;
+    --bad-bg: #F5DAD5; --bad: #7A2216; --over-bg: #DCEAED; --over: #1B4855;
+    --good: #8FD3A6; --red: #F08B7A;
+    --sans: "Segoe UI", system-ui, sans-serif;
+    --mono: Consolas, "Cascadia Mono", monospace;
+    --sheet: Calibri, "Segoe UI", sans-serif;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  html, body { width: 1920px; height: 1080px; overflow: hidden; background: var(--graphite); }
+  body { font-family: var(--sans); color: var(--off); -webkit-font-smoothing: antialiased; }
+  .layer { position: absolute; inset: 0; }
+  #bg-dark { background: var(--graphite); overflow: hidden; }
+  .grid { position: absolute; inset: -80px; background-size: 80px 80px;
+    -webkit-mask-image: radial-gradient(ellipse 70% 65% at 50% 45%, #000 15%, transparent 80%); }
+  #bg-dark .grid { background-image: linear-gradient(rgba(242,244,239,.04) 1px, transparent 1px),
+      linear-gradient(90deg, rgba(242,244,239,.04) 1px, transparent 1px); }
+  #bg-light { background: var(--off); overflow: hidden; }
+  #bg-light .grid { background-image: linear-gradient(rgba(17,29,34,.05) 1px, transparent 1px),
+      linear-gradient(90deg, rgba(17,29,34,.05) 1px, transparent 1px); }
+  .glow { position: absolute; width: 1200px; height: 1200px; border-radius: 50%;
+    background: radial-gradient(circle, rgba(217,241,122,.12), rgba(217,241,122,0) 62%); }
+  .glow2 { background: radial-gradient(circle, rgba(92,140,150,.22), rgba(92,140,150,0) 62%); }
+  #redglow { position: absolute; left: 900px; top: 200px; width: 1300px; height: 1000px; border-radius: 50%;
+    background: radial-gradient(circle, rgba(230,120,90,.10), rgba(230,120,90,0) 60%); }
+
+  .scene { position: absolute; inset: 0; opacity: 0; }
+  .eyebrow { font-family: var(--mono); font-size: 26px; letter-spacing: .1em; color: var(--chart); text-transform: uppercase; }
+  .hl { font-weight: 600; letter-spacing: -0.03em; line-height: 1.04; }
+  .sub { font-size: 32px; line-height: 1.4; color: rgba(242,244,239,.66); }
+
+  /* the shared data table */
+  .dt { border-collapse: collapse; table-layout: fixed; font-family: var(--sheet); }
+  .dt th { text-align: left; font-weight: 700; color: rgba(242,244,239,.6); white-space: nowrap; position: relative; }
+  .dt td { white-space: pre; position: relative; color: rgba(242,244,239,.92); }
+  .dt .r { text-align: right; }
+  .dt .cell { position: relative; display: inline-block; min-width: 10px; }
+  .dt .a, .dt .b { white-space: pre; display: inline-block; }
+  .dt .b { position: absolute; top: 0; left: 0; opacity: 0; }
+  .dt .r .b { left: auto; right: 0; }
+  .dt .blank { display: inline-block; width: 110px; height: 1em; vertical-align: middle; }
+  .dt .ws { background: rgba(230,174,101,.22); border-radius: 4px; }
+  .ring { position: absolute; inset: 6px 4px; border: 3px solid var(--warn); border-radius: 9px;
+    background: rgba(230,174,101,.10); opacity: 0; pointer-events: none; }
+  .tag { position: absolute; right: -6px; top: -22px; background: var(--warn); color: var(--graphite);
+    font-family: var(--sans); font-weight: 700; font-size: 22px; padding: 3px 12px; border-radius: 999px;
+    white-space: nowrap; opacity: 0; z-index: 3; }
+  .dt tr.row td { border-bottom: 1px solid rgba(242,244,239,.08); }
+  .dt th { border-bottom: 2px solid rgba(217,241,122,.6); }
+
+  /* scene 1 */
+  #s1 .stage { position: absolute; left: 190px; top: 400px; transform-origin: 40% 30%; }
+  #s1 .dt { font-size: 38px; }
+  #s1 .dt th { font-size: 30px; padding: 14px 26px; }
+  #s1 .dt td { padding: 15px 26px; }
+  #s1 .head { position: absolute; left: 140px; top: 96px; }
+  #s1 .hl { font-size: 100px; }
+  #s1 .dt td, #s1 .dt th { background: rgba(23,37,42,.85); }
+
+  /* scene 2 */
+  .center { position: absolute; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; }
+  #s2 .row { display: flex; align-items: center; gap: 56px; }
+  #s2 .name { font-weight: 600; font-size: 150px; letter-spacing: -0.04em; color: var(--graphite); line-height: 1; }
+  #s2 .clip { overflow: hidden; padding: 10px 10px 24px 0; }
+  #s2 .tagline { margin-top: 54px; font-size: 52px; font-weight: 600; letter-spacing: -0.02em; color: var(--muted); display: flex; gap: 22px; }
+  #s2 .tagline .t { color: var(--teal); }
+
+  /* scene 3 */
+  .leftcol { position: absolute; left: 140px; top: 0; bottom: 0; width: 660px; display: flex; flex-direction: column; justify-content: center; gap: 30px; }
+  .rightcol { position: absolute; left: 880px; right: 120px; top: 0; bottom: 0; display: flex; flex-direction: column; justify-content: center; gap: 26px; }
+  .card { background: linear-gradient(180deg, rgba(34,52,58,.82), rgba(22,36,41,.9));
+    border: 1px solid rgba(242,244,239,.11); border-radius: 22px; overflow: hidden;
+    box-shadow: 0 40px 90px -30px rgba(0,0,0,.6), inset 0 1px 0 rgba(242,244,239,.07); }
+  .files { display: flex; gap: 22px; }
+  .file { flex: 1; display: flex; align-items: center; gap: 22px; padding: 26px 28px; }
+  .badge { font-family: var(--mono); font-weight: 700; font-size: 22px; padding: 10px 12px; border-radius: 10px; }
+  .b-csv { background: rgba(217,241,122,.16); color: var(--chart); }
+  .b-xlsx { background: rgba(143,211,166,.16); color: var(--good); }
+  .file .fn { font-family: var(--mono); font-size: 25px; color: var(--off); }
+  .file .meta { font-size: 23px; color: rgba(242,244,239,.55); margin-top: 4px; }
+  .map { padding: 18px 34px 26px; }
+  .map .mh { font-family: var(--mono); font-size: 22px; color: rgba(242,244,239,.5); padding: 8px 0 14px; display: flex; justify-content: space-between; }
+  .mrow { display: grid; grid-template-columns: 290px 1fr 330px; align-items: center; height: 70px; font-family: var(--mono); font-size: 29px; }
+  .mrow .src { color: rgba(242,244,239,.85); }
+  .mrow .dst { color: var(--chart); text-align: left; padding-left: 26px; }
+  .mrow .line { position: relative; height: 2px; margin: 0 6px; }
+  .mrow .line i { position: absolute; inset: 0; background: linear-gradient(90deg, rgba(217,241,122,.15), rgba(217,241,122,.8)); transform-origin: left; }
+  .mrow .line b { position: absolute; right: -2px; top: -7px; width: 0; height: 0; border-left: 14px solid rgba(217,241,122,.85); border-top: 8px solid transparent; border-bottom: 8px solid transparent; }
+  .mrow .line em { position: absolute; top: -5px; width: 12px; height: 12px; border-radius: 50%; background: var(--chart); box-shadow: 0 0 16px var(--chart); }
+  .mrow.out .dst { color: rgba(242,244,239,.4); }
+  .mrow.out .line i { background: repeating-linear-gradient(90deg, rgba(242,244,239,.25) 0 10px, transparent 10px 18px); }
+  .mrow.out .src { color: rgba(242,244,239,.4); text-decoration: line-through; text-decoration-color: rgba(242,244,239,.4); }
+
+  /* scene 4 */
+  #s4 .head { position: absolute; left: 140px; top: 92px; right: 140px; display: flex; align-items: flex-end; justify-content: space-between; }
+  #s4 .hl { font-size: 70px; }
+  #s4 .tablecard { position: absolute; left: 140px; right: 140px; top: 236px; transform-origin: 50% 0; }
+  #s4 .ch { display: flex; align-items: center; gap: 16px; height: 62px; padding: 0 28px; font-family: var(--mono); font-size: 23px; color: rgba(242,244,239,.6); border-bottom: 1px solid rgba(242,244,239,.08); }
+  #s4 .ch .state { margin-left: auto; position: relative; width: 160px; height: 40px; }
+  #s4 .ch .state span { position: absolute; right: 0; top: 0; font-family: var(--sans); font-weight: 700; font-size: 22px; letter-spacing: .12em; padding: 6px 16px; border-radius: 999px; }
+  .st-before { background: rgba(230,174,101,.18); color: var(--warn); }
+  .st-after { background: rgba(217,241,122,.18); color: var(--chart); opacity: 0; }
+  #s4 .dt { width: 100%; font-size: 33px; }
+  #s4 .dt th { font-size: 25px; padding: 13px 28px; }
+  #s4 .dt td { padding: 0 28px; height: 68px; }
+  #s4 .dt tr.row { position: relative; }
+  .rowbg { position: absolute; inset: 0; opacity: 0; pointer-events: none; }
+  .status { position: relative; height: 40px; }
+  .chip { display: inline-flex; align-items: center; gap: 10px; font-family: var(--sans); font-weight: 700; font-size: 23px; padding: 6px 14px; border-radius: 9px; white-space: nowrap; }
+  .c-ok { background: rgba(143,211,166,.16); color: var(--good); }
+  .c-bad { background: rgba(240,139,122,.16); color: var(--red); }
+  .status .chip { position: absolute; left: 0; top: 0; opacity: 0; }
+  #scan { position: absolute; left: 0; right: 0; height: 3px; background: var(--chart);
+    box-shadow: 0 0 24px 4px rgba(217,241,122,.55); opacity: 0; z-index: 5; }
+  #scanglow { position: absolute; left: 0; right: 0; height: 120px; opacity: 0; z-index: 4;
+    background: linear-gradient(180deg, rgba(217,241,122,0), rgba(217,241,122,.07)); }
+  #s4 .totals { position: absolute; left: 140px; top: 900px; display: flex; gap: 22px; align-items: center; }
+  #s4 .tot { display: flex; align-items: baseline; gap: 14px; padding: 16px 26px; border-radius: 16px; font-size: 30px; }
+  #s4 .tot b { font-size: 46px; font-weight: 600; font-variant-numeric: tabular-nums; letter-spacing: -0.02em; }
+  #s4 .tot.g { background: rgba(143,211,166,.12); color: var(--good); }
+  #s4 .tot.r { background: rgba(240,139,122,.12); color: var(--red); }
+  #s4 .tot .x { color: rgba(242,244,239,.7); }
+  #s4 .src { font-family: var(--mono); font-size: 24px; color: rgba(242,244,239,.5); margin-left: 10px; }
+
+  /* scene 5 */
+  #s5 .head { position: absolute; left: 140px; top: 120px; }
+  #s5 .hl { font-size: 84px; }
+  #s5 .cards { position: absolute; left: 140px; right: 140px; top: 470px; display: grid; grid-template-columns: repeat(3, 1fr); gap: 30px; }
+  #s5 .card { padding: 36px 38px; height: 420px; display: flex; flex-direction: column; }
+  #s5 .big { font-size: 124px; font-weight: 600; letter-spacing: -0.04em; line-height: 1; margin-top: 26px; font-variant-numeric: tabular-nums; }
+  #s5 .big small { font-size: 40px; letter-spacing: -0.01em; color: rgba(242,244,239,.7); font-weight: 500; margin-left: 10px; }
+  #s5 .what { font-size: 29px; color: rgba(242,244,239,.68); margin-top: 14px; }
+  #s5 .bar { display: flex; height: 16px; border-radius: 8px; overflow: hidden; margin-top: auto; gap: 4px; }
+  #s5 .bar i { display: block; height: 100%; border-radius: 4px; }
+  #s5 .legend { display: flex; gap: 20px; font-size: 24px; color: rgba(242,244,239,.7); margin-top: 16px; }
+  #s5 .trio { display: flex; gap: 30px; margin-top: 26px; }
+  #s5 .trio div { font-size: 80px; font-weight: 600; letter-spacing: -0.03em; line-height: 1; font-variant-numeric: tabular-nums; }
+  #s5 .trio span { display: block; font-size: 24px; font-weight: 500; letter-spacing: 0; color: rgba(242,244,239,.6); margin-top: 10px; }
+  #s5 .checks { display: flex; gap: 9px; margin-top: auto; }
+  #s5 .checks i { flex: 1; height: 16px; border-radius: 4px; background: rgba(242,244,239,.12); }
+
+  /* scene 6 */
+  #s6 .wm { width: 820px; }
+  #s6 .val { margin-top: 64px; font-size: 58px; font-weight: 600; letter-spacing: -0.025em; color: var(--graphite); text-align: center; line-height: 1.12; }
+  #s6 .meta { margin-top: 26px; font-size: 32px; color: var(--muted); display: flex; gap: 18px; }
+  #s6 .meta i { color: #A9B6B1; font-style: normal; }
+  #s6 .url { margin-top: 46px; font-family: var(--mono); font-size: 40px; padding: 18px 36px; border-radius: 999px; background: var(--graphite); color: var(--chart); display: flex; align-items: center; gap: 18px; }
+  #s6 .url svg { width: 38px; height: 38px; }
+</style>
+</head>
+<body>
+<div id="bg-dark" class="layer"><div class="grid" id="gridD"></div><div id="redglow"></div>
+  <div class="glow" id="glowA"></div><div class="glow glow2" id="glowB"></div></div>
+<div id="bg-light" class="layer" style="opacity:0"><div class="grid" id="gridL"></div></div>
+
+<!-- 1. PROBLEM -->
+<div class="scene" id="s1">
+  <div class="stage" id="s1stage"></div>
+  <div class="head"><div class="hl" id="s1h">Messy spreadsheets<br>slow everything down.</div></div>
+</div>
+
+<!-- 2. MEET -->
+<div class="scene" id="s2">
+  <div class="center">
+    <div class="row">
+      <img id="s2icon" src="ordixa-icon.png" style="height:190px">
+      <div class="clip"><div class="name" id="s2name">Meet Ordixa.</div></div>
+    </div>
+    <div class="tagline" id="s2tag"><span>Clean.</span><span>Validate.</span><span>Transform.</span><span class="t">Trust your data.</span></div>
+  </div>
+</div>
+
+<!-- 3. IMPORT -->
+<div class="scene" id="s3">
+  <div class="leftcol">
+    <div class="eyebrow" id="s3e">Import</div>
+    <div class="hl" id="s3h" style="font-size:76px">Bring the exports you already have.</div>
+    <div class="sub" id="s3s">CSV or Excel. A short profile maps your columns once, then every run reuses it.</div>
+  </div>
+  <div class="rightcol">
+    <div class="files">
+      <div class="card file" id="f1"><span class="badge b-csv">CSV</span><div><div class="fn">inventory-after.csv</div><div class="meta">124 rows · 8 columns</div></div></div>
+      <div class="card file" id="f2"><span class="badge b-xlsx">XLSX</span><div><div class="fn">payments_2026-10.xlsx</div><div class="meta">22 rows · native dates</div></div></div>
+    </div>
+    <div class="card map" id="s3map">
+      <div class="mh"><span>your header</span><span>inventory-clean.toml</span></div>
+      <div class="mrow"><span class="src">Item SKU</span><span class="line"><i></i><b></b><em></em></span><span class="dst">sku</span></div>
+      <div class="mrow"><span class="src">Product Name</span><span class="line"><i></i><b></b><em></em></span><span class="dst">product_name</span></div>
+      <div class="mrow"><span class="src">Qty On Hand</span><span class="line"><i></i><b></b><em></em></span><span class="dst">quantity_on_hand</span></div>
+      <div class="mrow"><span class="src">Unit Price</span><span class="line"><i></i><b></b><em></em></span><span class="dst">unit_price</span></div>
+      <div class="mrow out"><span class="src">Supplier Contact</span><span class="line"><i></i></span><span class="dst">left out</span></div>
+    </div>
+  </div>
+</div>
+
+<!-- 4. CLEAN & VALIDATE -->
+<div class="scene" id="s4">
+  <div class="head"><div class="hl" id="s4h">Fixed where it's safe. <span style="color:var(--red)">Flagged</span> where it isn't.</div></div>
+  <div class="card tablecard" id="s4card">
+    <div class="ch"><span class="eyebrow" style="font-size:22px">ordixa clean</span><span class="src">inventory-after.csv</span>
+      <div class="state"><span class="st-before" id="stB">BEFORE</span><span class="st-after" id="stA">AFTER</span></div></div>
+    <div style="position:relative" id="s4wrap"><div id="scanglow"></div><div id="scan"></div><div id="s4stage"></div></div>
+  </div>
+  <div class="totals" id="s4tot">
+    <div class="tot g" id="totg"><b id="n119">119</b><span>clean rows written</span></div>
+    <div class="tot r" id="totr"><b id="n5">5</b><span>held back, <span class="x">each with a reason</span></span></div>
+  </div>
+</div>
+
+<!-- 5. RESULTS -->
+<div class="scene" id="s5">
+  <div class="head"><div class="eyebrow" id="s5e" style="margin-bottom:22px">Reconcile · Compare · Verify</div>
+    <div class="hl" id="s5h">From raw spreadsheets<br>to reliable results.</div></div>
+  <div class="cards">
+    <div class="card" id="c1"><div class="eyebrow" style="font-size:22px">Reconcile</div>
+      <div class="big"><span class="cnt" data-v="15">15</span><small>orders</small></div>
+      <div class="what">matched to payments, to the cent</div>
+      <div class="bar" id="bar"><i style="background:var(--good)" data-w="9"></i><i style="background:var(--warn)" data-w="3"></i><i style="background:var(--red)" data-w="2"></i><i style="background:#7FB6C4" data-w="1"></i></div>
+      <div class="legend"><span>9 paid</span><span>3 partial</span><span>2 unpaid</span><span>1 overpaid</span></div></div>
+    <div class="card" id="c2"><div class="eyebrow" style="font-size:22px">Compare</div>
+      <div class="what" style="margin-top:20px">last week's export vs this week's</div>
+      <div class="trio"><div style="color:var(--good)">+<span class="cnt" data-v="6" style="display:inline;font-size:inherit;color:inherit;margin:0;font-weight:inherit;letter-spacing:inherit">6</span><span>added</span></div>
+        <div style="color:var(--red)">−<span class="cnt" data-v="4" style="display:inline;font-size:inherit;color:inherit;margin:0;font-weight:inherit;letter-spacing:inherit">4</span><span>removed</span></div>
+        <div style="color:#9DC3C9"><span class="cnt" data-v="19" style="display:inline;font-size:inherit;color:inherit;margin:0;font-weight:inherit;letter-spacing:inherit">19</span><span>modified</span></div></div>
+      <div class="what" style="margin-top:auto;font-size:25px;color:rgba(242,244,239,.55)">matched by business key, never by row order</div></div>
+    <div class="card" id="c3"><div class="eyebrow" style="font-size:22px">Verify</div>
+      <div class="big"><span class="cnt" data-v="9">9</span><small>/ 9 checks passed</small></div>
+      <div class="what">checksummed manifest: outputs and inputs unchanged</div>
+      <div class="checks" id="checks"><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i></div></div>
+  </div>
+</div>
+
+<!-- 6. CLOSE -->
+<div class="scene" id="s6">
+  <div class="center">
+    <img class="wm" id="s6wm" src="ordixa-wordmark.png">
+    <div class="val" id="s6v">Turn spreadsheet chaos into<br>trustworthy business data.</div>
+    <div class="meta" id="s6m"><span>Open source</span><i>·</i><span>Runs locally</span><i>·</i><span>MIT licensed</span></div>
+    <div class="url" id="s6u"><svg viewBox="0 0 16 16" fill="#D9F17A"><path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.013 8.013 0 0016 8c0-4.42-3.58-8-8-8z"/></svg>github.com/quangshuynh/ordixa</div>
+  </div>
+</div>
+
+<script>
+const $ = s => document.querySelector(s), $$ = s => [...document.querySelectorAll(s)];
+const clamp = v => Math.max(0, Math.min(1, v));
+const eo = x => 1 - Math.pow(1 - x, 3);
+const eo5 = x => 1 - Math.pow(1 - x, 5);
+const eio = x => x < .5 ? 4*x*x*x : 1 - Math.pow(-2*x + 2, 3) / 2;
+const prog = (t, a, d, e = eo) => e(clamp((t - a) / d));
+const lerp = (a, b, k) => a + (b - a) * k;
+const back = x => { const c = 1.6; return 1 + (c + 1) * Math.pow(x - 1, 3) + c * Math.pow(x - 1, 2); };
+
+// Real rows from examples/ordixa/exports/inventory/inventory-after.csv and
+// what `ordixa clean --profile inventory-clean.toml` did with each one.
+const COLS = [
+  { k: 'Product Name', out: 'product_name', w: 470 },
+  { k: 'Item SKU', out: 'sku', w: 205 },
+  { k: 'Qty On Hand', out: 'quantity_on_hand', w: 240, r: true },
+  { k: 'Unit Price', out: 'unit_price', w: 190, r: true },
+  { k: 'Category', out: 'category', w: 200 },
+];
+const ROWS = [
+  { c: ['Classic Garden Twine Spool', 'SKU-0009', '63', '$53.23', 'Garden'], bad: [3], fix: { 3: '53.23' }, tag: [3, '$ in price'], ok: 'Standardized' },
+  { c: ['Large Pocket Sketchbook   ', 'SKU-0030', '63', '60.86', 'Stationery'], bad: [0], fix: { 0: 'Large Pocket Sketchbook' }, tag: [0, 'extra spaces'], ws: 0, ok: 'Trimmed' },
+  { c: ['Large Beeswax Candle Pair', 'SKU-0028', '32', '53.37', 'N/A'], bad: [4], fix: { 4: '' }, tag: [4, 'N/A'], ok: 'Blank, not "N/A"' },
+  { c: ['Large Waxed Canvas Tote', 'SKU-0025', '59', '', 'Outdoor'], bad: [3], tag: [3, 'missing price'], no: 'missing price' },
+  { c: ['Unlabeled Market Tote', '', '8', '14.00', 'Outdoor'], bad: [1], tag: [1, 'missing SKU'], no: 'missing SKU' },
+  { c: ['Studio Pocket Sketchbook', 'SKU-0070', '22', '4.73', 'Stationery'], bad: [2], tag: [2, 'same SKU, two counts'], no: 'SKU conflict' },
+  { c: ['Studio Pocket Sketchbook', 'SKU-0070', '26', '4.73', 'Stationery'], bad: [2], no: 'SKU conflict' },
+];
+const esc = s => s.replace(/&/g, '&amp;').replace(/</g, '&lt;');
+function buildTable(withStatus, widths) {
+  let h = '<table class="dt"><colgroup>';
+  COLS.forEach((c, i) => h += `<col style="width:${widths[i]}px">`);
+  if (withStatus) h += '<col>';
+  h += '</colgroup><tr>';
+  COLS.forEach(c => h += `<th class="${c.r ? 'r' : ''}"><span class="cell"><span class="a">${c.k}</span><span class="b">${c.out}</span></span></th>`);
+  if (withStatus) h += '<th>Result</th>';
+  h += '</tr>';
+  ROWS.forEach(row => {
+    h += '<tr class="row">';
+    row.c.forEach((v, i) => {
+      const bad = row.bad.includes(i);
+      let a = v === '' ? '<span class="blank"></span>' : esc(v);
+      if (row.ws === i) a = esc(v.trimEnd()) + '<span class="ws">' + v.slice(v.trimEnd().length) + '</span>';
+      const fixed = row.fix && i in row.fix;
+      const b = fixed ? (row.fix[i] === '' ? '<span class="blank"></span>' : esc(row.fix[i])) : '';
+      h += `<td class="${COLS[i].r ? 'r' : ''}">${bad ? '<div class="ring"></div>' : ''}` +
+        (row.tag && row.tag[0] === i ? `<div class="tag">${row.tag[1]}</div>` : '') +
+        `<span class="cell${fixed ? ' fx' : ''}"><span class="a${bad ? ' bad' : ''}">${a}</span>${fixed ? `<span class="b">${b}</span>` : ''}</span></td>`;
+    });
+    if (withStatus) h += `<td><div class="status"><span class="chip ${row.ok ? 'c-ok' : 'c-bad'}">${row.ok ? '✓ ' + row.ok : '✕ Held back: ' + row.no}</span></div></td>`;
+    h += '</tr>';
+  });
+  return h + '</table>';
+}
+$('#s1stage').innerHTML = buildTable(false, [520, 220, 240, 200, 230]);
+$('#s4stage').innerHTML = buildTable(true, [420, 185, 235, 175, 185]);
+// warm the bad values in both tables
+$$('.dt .a.bad').forEach(e => e.style.color = 'var(--warn)');
+
+const S = { s1:[0,3.0], s2:[3.0,6.0], s3:[6.0,9.5], s4:[9.5,14.5], s5:[14.5,18.5], s6:[18.5,23.0] };
+const OUT = 0.32;
+function sceneVis(t, id) {
+  const [a, b] = S[id];
+  const fin = id === 's1' ? 1 : clamp((t - a - 0.04) / 0.3);
+  const fout = id === 's6' ? 1 : 1 - clamp((t - (b - OUT)) / OUT);
+  return Math.min(fin, fout);
+}
+function enter(el, t, a, d = 0.6, dy = 34, blur = 10) {
+  const k = prog(t, a, d);
+  el.style.opacity = k;
+  el.style.transform = `translateY(${(1 - k) * dy}px)`;
+  el.style.filter = k < 1 ? `blur(${(1 - k) * blur}px)` : 'none';
+  return k;
+}
+// headline words rise in one by one
+function words(el) {
+  if (el.dataset.split) return;
+  el.dataset.split = 1;
+  const walk = n => [...n.childNodes].forEach(c => {
+    if (c.nodeType === 3) {
+      const frag = document.createDocumentFragment();
+      c.textContent.split(/(\s+)/).forEach(w => {
+        if (!w) return;
+        if (/^\s+$/.test(w)) { frag.appendChild(document.createTextNode(w)); return; }
+        const s = document.createElement('span'); s.className = 'w'; s.textContent = w;
+        s.style.display = 'inline-block'; frag.appendChild(s);
+      });
+      c.replaceWith(frag);
+    } else if (c.nodeName !== 'BR') walk(c);
+  });
+  walk(el);
+}
+function wordsIn(el, t, a, step = 0.06, d = 0.55) {
+  words(el);
+  el.querySelectorAll('.w').forEach((w, i) => {
+    const k = prog(t, a + i * step, d);
+    w.style.opacity = k;
+    w.style.transform = `translateY(${(1 - k) * 0.5}em)`;
+    w.style.filter = k < 1 ? `blur(${(1 - k) * 8}px)` : 'none';
+  });
+}
+function exitDrift(el, t, id) {
+  const [, b] = S[id];
+  const k = clamp((t - (b - OUT)) / OUT);
+  el.style.transform = `translateY(${-k * 20}px) scale(${1 - k * 0.01})`;
+  el.style.filter = k > 0 ? `blur(${k * 8}px)` : 'none';
+}
+function swapCell(cell, k1, k2) {
+  const a = cell.querySelector('.a'), b = cell.querySelector('.b');
+  a.style.opacity = 1 - k1; a.style.transform = `translateY(${-k1 * 14}px)`;
+  if (b) { b.style.opacity = k2; b.style.transform = `translateY(${(1 - k2) * 14}px)`; }
+}
+
+function render(t) {
+  const lightK = Math.max(
+    clamp((t - 2.84) / 0.36) * (1 - clamp((t - 5.72) / 0.36)),
+    clamp((t - 18.3) / 0.4));
+  $('#bg-light').style.opacity = eio(lightK);
+  $('#glowA').style.left = (1000 + Math.sin(t * .35) * 140) + 'px';
+  $('#glowA').style.top = (-460 + Math.cos(t * .3) * 90) + 'px';
+  $('#glowB').style.left = (-480 + Math.cos(t * .27) * 110) + 'px';
+  $('#glowB').style.top = (360 + Math.sin(t * .33) * 100) + 'px';
+  $('#redglow').style.opacity = 1 - clamp((t - 2.6) / 0.4);
+  $('#gridD').style.transform = `translate(${-(t * 6) % 80}px, ${-(t * 4) % 80}px)`;
+  $('#gridL').style.transform = `translate(${-(t * 6) % 80}px, 0)`;
+
+  for (const id in S) {
+    const v = sceneVis(t, id), el = $('#' + id);
+    el.style.opacity = v;
+    el.style.display = v > 0 ? 'block' : 'none';
+    if (v > 0 && id !== 's6') exitDrift(el, t, id);
+  }
+
+  // 1. PROBLEM: tilted table pushes in, unsteady; problems ring one by one
+  {
+    const st = $('#s1stage');
+    const sc = lerp(0.98, 1.08, t / 3);
+    const jx = Math.sin(t * 7.3) * 3 + Math.sin(t * 13.1) * 1.5, jy = Math.cos(t * 6.1) * 2.5;
+    st.style.transform = `perspective(1800px) rotateX(${lerp(14, 11, t / 3)}deg) rotateY(-7deg) rotateZ(-3deg) translate(${jx}px, ${jy}px) scale(${sc})`;
+    const bad = $$('#s1 .ring'), tags = $$('#s1 .tag');
+    bad.forEach((r, i) => {
+      const k = prog(t, 0.45 + i * 0.2, 0.22);
+      r.style.opacity = k;
+      r.style.transform = `scale(${lerp(1.25, 1, k)})`;
+    });
+    tags.forEach((g, i) => {
+      const k = prog(t, 0.5 + i * 0.22, 0.3, back);
+      g.style.opacity = clamp(k);
+      g.style.transform = `translateY(${(1 - k) * 12}px) scale(${lerp(0.7, 1, k)})`;
+    });
+    wordsIn($('#s1h'), t, 0.05, 0.07, 0.5);
+  }
+
+  // 2. MEET ORDIXA
+  {
+    const k = prog(t, 3.12, 0.85, eo5);
+    const ic = $('#s2icon');
+    ic.style.opacity = clamp(k * 1.5);
+    ic.style.transform = `rotate(${lerp(-150, 0, k)}deg) scale(${lerp(0.45, 1, k)})`;
+    const n = $('#s2name'), kn = prog(t, 3.42, 0.7, eo5);
+    n.style.transform = `translateX(${(1 - kn) * -110}%)`;
+    n.style.opacity = kn;
+    $$('#s2tag span').forEach((s, i) => enter(s, t, 3.62 + i * 0.12, 0.5, 26, 8));
+    // slow push
+    $('#s2 .center').style.transform = `scale(${lerp(1, 1.025, clamp((t - 3) / 3))})`;
+  }
+
+  // 3. IMPORT
+  {
+    $('#s3e').style.opacity = prog(t, 6.15, 0.4);
+    wordsIn($('#s3h'), t, 6.2, 0.06);
+    enter($('#s3s'), t, 6.6, 0.6, 20, 6);
+    [['#f1', 6.25], ['#f2', 6.4]].forEach(([s, a]) => {
+      const k = prog(t, a, 0.7, back);
+      $(s).style.opacity = clamp(prog(t, a, 0.4));
+      $(s).style.transform = `translateY(${(1 - k) * -70}px)`;
+    });
+    const mk = prog(t, 6.6, 0.6);
+    $('#s3map').style.opacity = mk;
+    $('#s3map').style.transform = `translateY(${(1 - mk) * 40}px)`;
+    $$('#s3 .mrow').forEach((r, i) => {
+      const a = 6.95 + i * 0.22;
+      const kl = prog(t, a, 0.45);
+      r.querySelector('.line i').style.transform = `scaleX(${kl})`;
+      const ar = r.querySelector('.line b'); if (ar) ar.style.opacity = kl > .95 ? 1 : 0;
+      const dst = r.querySelector('.dst'); const kd = prog(t, a + 0.3, 0.35);
+      dst.style.opacity = kd; dst.style.transform = `translateX(${(1 - kd) * -16}px)`;
+      const src = r.querySelector('.src'); src.style.opacity = prog(t, a - 0.15, 0.3);
+      const dot = r.querySelector('.line em');
+      if (dot) {
+        const ph = ((t - a - 0.5) * 0.7 + i * 0.23) % 1;
+        dot.style.left = `calc(${ph * 100}% - 6px)`;
+        dot.style.opacity = t > a + 0.5 ? Math.sin(ph * Math.PI) : 0;
+      }
+    });
+    $('#s3 .rightcol').style.transform = `translateY(${lerp(10, -10, clamp((t - 6) / 3.5))}px)`;
+  }
+
+  // 4. CLEAN & VALIDATE: same table, flattened; scan line repairs or flags each row
+  {
+    wordsIn($('#s4h'), t, 9.62, 0.06);
+    const card = $('#s4card');
+    const kc = prog(t, 9.55, 0.8, eo5);
+    card.style.opacity = clamp(kc * 1.4);
+    card.style.transform = `perspective(1800px) rotateX(${(1 - kc) * 12}deg) translateY(${(1 - kc) * 60}px) scale(${lerp(0.96, 1, kc) * lerp(1, 1.012, clamp((t - 10.3) / 4))})`;
+    const rows = $$('#s4 tr.row');
+    const ths = $$('#s4 th .cell');
+    const t0 = 10.25, t1 = 12.15; // scan
+    ths.forEach((c, i) => { const k1 = prog(t, t0 - 0.1 + i * 0.05, 0.2), k2 = prog(t, t0 + i * 0.05, 0.3); swapCell(c, k1, k2); });
+    const wrap = $('#s4wrap'), H = wrap.offsetHeight;
+    const headH = $('#s4 th').offsetHeight;
+    const sp = clamp((t - t0) / (t1 - t0));
+    const y = headH + sp * (H - headH);
+    const scan = $('#scan'), sg = $('#scanglow');
+    const sv = (t > t0 - 0.05 && t < t1 + 0.25) ? 1 - clamp((t - t1) / 0.25) : 0;
+    scan.style.top = y + 'px'; scan.style.opacity = sv;
+    sg.style.top = (y - 120) + 'px'; sg.style.opacity = sv;
+    rows.forEach((r, i) => {
+      const at = t0 + ((r.offsetTop + r.offsetHeight * 0.5 - headH) / (H - headH)) * (t1 - t0);
+      const data = ROWS[i];
+      const k = prog(t, at, 0.35);
+      r.querySelectorAll('.cell.fx').forEach(c => swapCell(c, prog(t, at, 0.16), prog(t, at + 0.1, 0.3)));
+      r.querySelectorAll('.ring').forEach(g => {
+        g.style.opacity = data.ok ? 0.9 * (1 - k) + Math.sin(clamp((t - at) / 0.5) * Math.PI) * 0.5 : 0.9;
+        g.style.borderColor = data.ok ? `rgba(143,211,166,${k})` : `rgba(${Math.round(lerp(230,240,k))},${Math.round(lerp(174,139,k))},${Math.round(lerp(101,122,k))},1)`;
+        if (data.ok) g.style.borderColor = k > 0 ? 'var(--good)' : 'var(--warn)';
+        g.style.background = data.ok ? `rgba(143,211,166,${0.14 * Math.sin(clamp((t - at) / 0.6) * Math.PI)})` : `rgba(240,139,122,${0.10 * k})`;
+        if (data.ok) g.style.opacity = Math.max(1 - k, Math.sin(clamp((t - at) / 0.6) * Math.PI) * 0.9);
+      });
+      r.querySelectorAll('.a.bad').forEach(a => { if (!data.ok) a.style.color = k > 0.5 ? 'var(--red)' : 'var(--warn)'; });
+      r.querySelectorAll('td').forEach((td, j) => {
+        if (j < 5) td.style.opacity = data.ok ? 1 : lerp(1, 0.55, k);
+        td.style.background = data.ok ? `rgba(143,211,166,${0.05 * k})` : `rgba(240,139,122,${0.07 * k})`;
+      });
+      const chip = r.querySelector('.status .chip'), kk = prog(t, at + 0.12, 0.4, back);
+      chip.style.opacity = clamp(kk); chip.style.transform = `translateX(${(1 - kk) * 24}px) scale(${lerp(0.9, 1, clamp(kk))})`;
+    });
+    const kf = prog(t, 12.2, 0.4);
+    $('#stB').style.opacity = 1 - kf; $('#stB').style.transform = `translateY(${-kf * 12}px)`;
+    $('#stA').style.opacity = kf; $('#stA').style.transform = `translateY(${(1 - kf) * 12}px)`;
+    [['#totg', 12.4], ['#totr', 12.55]].forEach(([s, a]) => enter($(s), t, a, 0.55, 24, 6));
+    $('#n119').textContent = Math.round(119 * prog(t, 12.4, 0.8));
+    $('#n5').textContent = Math.round(5 * prog(t, 12.55, 0.6));
+  }
+
+  // 5. RESULTS
+  {
+    $('#s5e').style.opacity = prog(t, 14.65, 0.4);
+    wordsIn($('#s5h'), t, 14.68, 0.06);
+    ['#c1', '#c2', '#c3'].forEach((s, i) => {
+      const a = 15.05 + i * 0.22, k = prog(t, a, 0.75, eo5);
+      const c = $(s);
+      c.style.opacity = clamp(k * 1.3);
+      c.style.transform = `translateY(${(1 - k) * 90}px) scale(${lerp(0.94, 1, k)})`;
+      c.querySelectorAll('.cnt').forEach(n => n.textContent = Math.round(+n.dataset.v * prog(t, a + 0.15, 0.8)));
+    });
+    $$('#bar i').forEach((b, i) => { b.style.flex = `${+b.dataset.w * prog(t, 15.4 + i * 0.1, 0.5)} 0 0`; b.style.opacity = prog(t, 15.4 + i * 0.1, 0.3); });
+    $$('#checks i').forEach((c, i) => { const k = prog(t, 15.75 + i * 0.07, 0.25); c.style.background = `rgba(${Math.round(lerp(242,217,k))},${Math.round(lerp(244,241,k))},${Math.round(lerp(239,122,k))},${lerp(.12, .9, k)})`; });
+    $('#s5 .cards').style.transform = `translateY(${lerp(0, -12, clamp((t - 15.5) / 3))}px)`;
+  }
+
+  // 6. CLOSE
+  {
+    const k = prog(t, 18.6, 0.9, eo5);
+    const wm = $('#s6wm');
+    wm.style.opacity = clamp(k * 1.3);
+    wm.style.transform = `scale(${lerp(0.9, 1, k)})`;
+    wm.style.filter = k < 1 ? `blur(${(1 - k) * 14}px)` : 'none';
+    wordsIn($('#s6v'), t, 18.95, 0.05);
+    enter($('#s6m'), t, 19.3, 0.55, 20, 6);
+    enter($('#s6u'), t, 19.45, 0.6, 24, 8);
+    $('#s6 .center').style.transform = `scale(${lerp(1.0, 1.02, clamp((t - 18.5) / 4.5))})`;
+  }
+}
+window.render = render;
+window.ready = Promise.all([document.fonts.ready,
+  ...[...document.images].map(i => i.complete ? 1 : new Promise(r => { i.onload = i.onerror = r; }))]);
+const q = new URLSearchParams(location.search).get('t');
+if (q !== null) render(+q);
+</script>
+</body>
+</html>

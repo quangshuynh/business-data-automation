@@ -22,6 +22,12 @@ short TOML profile, and writes reviewable workbooks and CSVs with a manifest
 that can be verified later. Everything runs locally; no database, account, or
 network access is needed.
 
+<p align="center">
+  <img src="docs/media/ordixa-loop.gif" width="880"
+       alt="Ordixa cleaning a fictional inventory export: a dollar sign, extra spaces, and an N/A placeholder are normalized, while a missing price and two rows sharing one SKU are held back with reasons; 119 of 124 rows written, 5 held back">
+</p>
+<p align="center"><em><code>clean</code> on the fictional inventory export: safe fixes are applied, and anything it cannot fix is held back with a reason. See <a href="docs/SPREADSHEET_WORKFLOWS.md#cleaning">spreadsheet workflows</a>.</em></p>
+
 ## Three workflows
 
 | Workflow | Command | Turns | Into |
