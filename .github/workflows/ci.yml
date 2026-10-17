@@ -50,3 +50,16 @@ jobs:
           test "$(find output/ci -mindepth 1 -maxdepth 1 -name 'run-*' -type d | wc -l)" -eq 2
           test -z "$(find output/ci -mindepth 1 -maxdepth 1 -name '.run-*')"
           test -z "$(git status --porcelain)"
+
+      - name: Spreadsheet clean/compare smoke test
+        run: |
+          python -m app.ordixa check-profile --profile examples/ordixa/profiles/inventory-clean.toml --input examples/ordixa/exports/inventory/inventory-after.csv
+          python -m app.ordixa clean --profile examples/ordixa/profiles/inventory-clean.toml --input examples/ordixa/exports/inventory/inventory-before.csv --out output/ci-clean
+          python -m app.ordixa compare --profile examples/ordixa/profiles/inventory-compare.toml --before examples/ordixa/exports/inventory/inventory-before.csv --after examples/ordixa/exports/inventory/inventory-after.csv --out output/ci-compare
+          python -m app.ordixa compare --profile examples/ordixa/profiles/inventory-clean.toml --before examples/ordixa/exports/inventory/inventory-before.csv --after examples/ordixa/exports/inventory/inventory-after.csv --out output/ci-compare && exit 1 || test $? -eq 2
+          python -m app.ordixa verify --run "$(find output/ci-clean -mindepth 1 -maxdepth 1 -name 'run-*' -type d)" --input examples/ordixa/exports/inventory/inventory-before.csv
+          python -m app.ordixa verify --run "$(find output/ci-compare -mindepth 1 -maxdepth 1 -name 'run-*' -type d)" --input examples/ordixa/exports/inventory
+          python -m app.ordixa.inventory_demo --out output/ci-inventory-demo
+          test "$(find output/ci-compare -mindepth 1 -maxdepth 1 -name 'run-*' -type d | wc -l)" -eq 1
+          test -z "$(find output -name '.run-*')"
+          test -z "$(git status --porcelain)"
