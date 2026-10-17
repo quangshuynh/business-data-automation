@@ -189,3 +189,9 @@ products. Price changes range from −2.50 to +5.00, including a one-cent
 change on SKU-0050 (68.20 to 68.19). The `last_counted` date changes for
 every product and is ignored by the compare profile. Tests check these
 values in `tests/test_ordixa_inventory_fixtures.py`.
+
+The comparison result is therefore **incomplete**: the 3 ambiguous or
+invalid SKUs and the row without a SKU are in no category. It also carries
+two warnings: all 113 matched products (19 modified + 94 unchanged) differ
+in the ignored `last_counted` column, and one exact duplicate row was
+removed. `tests/test_ordixa_compare_integrity.py` checks this result.

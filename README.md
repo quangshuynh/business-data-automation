@@ -15,47 +15,32 @@
 
 **Less busywork. More clarity.**
 
-Turn messy business exports into clear, actionable reports. Ordixa imports
-CSV and Excel files, applies repeatable validation rules, reconciles orders
-and payments, and puts every exception in a structured workbook.
+Ordixa automates spreadsheet cleaning, data validation, financial
+reconciliation, and business reporting for small businesses. It reads the
+CSV and Excel exports a business already has, applies rules written once in a
+short TOML profile, and writes reviewable workbooks and CSVs with a manifest
+that can be verified later. Everything runs locally; no database, account, or
+network access is needed.
+
+## Three workflows
+
+| Workflow | Command | Turns | Into |
+| --- | --- | --- | --- |
+| **Reconcile** orders and payments | `run` | storefront orders, processor payments, optional customers | paid / partial / unpaid / overpaid ledger, exceptions workbook, exact totals |
+| **Clean** one table | `clean` | an inconsistent CSV/XLSX export | a typed, standardized CSV plus every held-back row and why |
+| **Compare** two versions | `compare` | last week's and this week's export | added, removed, and modified records by business key, in a change report |
+
+All three share the same foundation: exact decimal parsing, identifiers kept
+as exact text, duplicates and conflicting records held back instead of
+guessed, formula-injection protection, atomic run directories, and
+checksummed manifests. A read-only `check-profile` previews how a profile
+will read the files, and `verify` re-checks a finished run before delivery.
 
 <p align="center">
   <img src="docs/images/workbook-exceptions.png" width="900"
        alt="Exceptions sheet of an Ordixa workbook listing unpaid, partially paid, and overpaid orders with a note on what to check">
 </p>
-<p align="center"><em>Exceptions sheet from the fictional demo, rendered from the generated workbook.</em></p>
-
-## What Ordixa does
-
-A small business already has the exports: orders from a storefront, payments
-from a processor, sometimes a customer list. Ordixa turns one batch of those
-files into a reviewed result:
-
-1. **Reads CSV and XLSX exports** read-only, and can describe an unfamiliar
-   file before any setup (`inspect`).
-2. **Applies a versioned import profile**: a short TOML file that maps the
-   customer's headers, ID prefixes, date formats, status labels, and refund
-   signs onto one canonical model. Profiles are validated before any data is read.
-3. **Validates and normalizes** every row with exact decimal arithmetic.
-   Problems are rejected, kept with a warning, or excluded by rule, and each
-   one is traced to its source file and row.
-4. **Reconciles** payments, refunds, and adjustments against order totals
-   using the shared order reference, and classifies each order as paid,
-   partially paid, unpaid, or overpaid.
-5. **Writes an Excel exceptions workbook** (Summary, Exceptions, Rejected Rows,
-   Full Ledger) plus CSV artifacts.
-6. **Records an auditable manifest** with input and output checksums, counts,
-   totals, and a result fingerprint, so a run can be verified later.
-
-Everything runs locally. No database, account, or network access is needed.
-
-The same foundation also handles single-table exports such as an inventory
-list: **`clean`** standardizes one CSV/XLSX file and reports every row it
-held back, and **`compare`** matches two versions by an explicit business key
-and writes a change report of added, removed, and modified records. See
-[docs/SPREADSHEET_WORKFLOWS.md](docs/SPREADSHEET_WORKFLOWS.md).
-
-## Product preview
+<p align="center"><em>Exceptions sheet from the fictional reconciliation demo, rendered from the generated workbook.</em></p>
 
 <table>
   <tr>
@@ -63,17 +48,17 @@ and writes a change report of added, removed, and modified records. See
     <td width="50%"><img src="docs/images/cli-demo-run.png" alt="Terminal output of the seven-step demo ending with nine passing verification checks"></td>
   </tr>
   <tr>
-    <td><em>Summary sheet: totals, exceptions, data quality, input fingerprints.</em></td>
+    <td><em>Reconciliation Summary: totals, exceptions, data quality, input fingerprints.</em></td>
     <td><em>The guided demo, from source exports to verified manifest.</em></td>
   </tr>
 </table>
 
-The [demo walkthrough](docs/DEMO.md) has the full gallery: read-only
-inspection, Rejected Rows, and Full Ledger.
+More in the [screenshot gallery](docs/DEMO.md).
 
 ## Quick start
 
-Prerequisites: Python 3.14 (the version CI uses) and Git.
+Prerequisites: Python 3.14 (the version CI uses) and Git. Ordixa runs from
+a source checkout.
 
 ```bash
 git clone https://github.com/quangshuynh/ordixa.git
@@ -81,125 +66,97 @@ cd ordixa
 python -m venv .venv
 source .venv/bin/activate        # Windows PowerShell: .venv\Scripts\Activate.ps1
 python -m pip install -r requirements.txt
+python -m app.ordixa --version
 ```
 
-Run the complete fictional demo (inspect, validate the profile, reconcile,
-write the workbook, verify the manifest):
+## Try it on fictional data
+
+Each demo runs end to end and verifies its own output:
 
 ```bash
-python -m app.ordixa.demo
+python -m app.ordixa.demo             # reconcile the Harbor Lane orders and payments
+python -m app.ordixa.inventory_demo   # clean and compare two weeks of inventory
 ```
 
-Or run each step yourself:
+Or run the steps yourself. Reconciliation:
 
 ```bash
 python -m app.ordixa inspect --input examples/ordixa/exports/demo
 python -m app.ordixa check-profile --profile examples/ordixa/profiles/harbor-lane.toml \
-  --input examples/ordixa/exports/demo
+  --input examples/ordixa/exports/demo --explain
 python -m app.ordixa run --profile examples/ordixa/profiles/harbor-lane.toml \
   --input examples/ordixa/exports/demo --out output/demo
-python -m app.ordixa verify --run output/demo/run-<id> --input examples/ordixa/exports/demo
 ```
 
-`check-profile --input` is a read-only preflight that lists every missing
-file, missing column, and unused personal-data column at once; `verify`
-re-checks a finished run against its manifest before delivery.
-
-Each run creates `output/demo/run-<timestamp>-<id>/` containing
-`ordixa_exceptions.xlsx`, `reconciliation_ledger.csv`, `rejected_rows.csv`,
-and `manifest.json`. Open the `.xlsx` file in Excel or LibreOffice. `output/`
-is git-ignored.
-
-Clean and compare the fictional weekly inventory exports:
+Cleaning and comparison:
 
 ```bash
-python -m app.ordixa.inventory_demo
+python -m app.ordixa clean --profile examples/ordixa/profiles/inventory-clean.toml \
+  --input examples/ordixa/exports/inventory/inventory-before.csv --out output/inventory-clean
+python -m app.ordixa check-profile --profile examples/ordixa/profiles/inventory-compare.toml \
+  --before examples/ordixa/exports/inventory/inventory-before.csv \
+  --after examples/ordixa/exports/inventory/inventory-after.csv
 python -m app.ordixa compare --profile examples/ordixa/profiles/inventory-compare.toml \
   --before examples/ordixa/exports/inventory/inventory-before.csv \
   --after examples/ordixa/exports/inventory/inventory-after.csv --out output/inventory-comparison
 ```
 
-## Features
-
-| Capability | Status |
-| --- | --- |
-| CSV and XLSX input; several files per dataset (for example two months) | Implemented |
-| Versioned TOML import profiles with strict validation and spelling hints | Implemented |
-| Read-only `inspect` for unfamiliar exports (prints no cell values) | Implemented |
-| Read-only pilot preflight (`check-profile --input`) and run `verify` | Implemented |
-| Numeric or exact-text identifiers (`#1001`, `ORD-2026-00142`, `00012345`) | Implemented |
-| Exact `Decimal` money parsing: separators, symbols, negative styles | Implemented |
-| Duplicate, conflicting-duplicate, and identifier-collision safeguards | Implemented |
-| Paid / partial / unpaid / overpaid reconciliation with refunds and adjustments | Implemented |
-| Branded four-sheet Excel workbook, formula-injection protected, print-ready | Implemented |
-| Run manifest with SHA-256 checksums, result fingerprint, and verification | Implemented |
-| Atomic run directories; earlier runs are never overwritten | Implemented |
-| Spreadsheet `clean`: explicit column mapping, typed values, duplicate and conflicting-key handling | Implemented |
-| Spreadsheet `compare`: keyed added/removed/modified report workbook, no fuzzy matching | Implemented |
-| Original CSV pipeline with optional PostgreSQL, FastAPI, and dashboard | Implemented (legacy path) |
-| Matching payments to orders from earlier runs | Planned |
-| Vendor connectors (Shopify, Square, Stripe, QuickBooks) | Not implemented |
-| Hosted self-service app, accounts, scheduling | Not implemented |
-
-## Architecture
-
-Exports pass through the import profile, strict normalization, row
-validation, and the reconciliation engine shared with the original Business
-Data Automation pipeline (`main.py`, still unchanged), and are written to an
-atomic, checksummed run directory. [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md)
-covers the module layout, the legacy pipeline, the API, the dashboard, and
-the test strategy.
+Every run creates a new `run-<timestamp>-<id>/` folder (`output/` is
+git-ignored) and ends by printing the `verify` command for it. A comparison
+also says whether it is complete, complete with warnings, or incomplete, so
+missing columns or unreadable records are never passed off as unchanged.
 
 ## Documentation
 
 | Document | Contents |
 | --- | --- |
-| [docs/ORDIXA.md](docs/ORDIXA.md) | CLI, profile reference, identifiers, normalization, validation, workbook, manifests, limitations |
-| [docs/DEMO.md](docs/DEMO.md) | The fictional Harbor Lane walkthrough, expected results, screenshot gallery |
-| [docs/SPREADSHEET_WORKFLOWS.md](docs/SPREADSHEET_WORKFLOWS.md) | `clean` and `compare`: table profiles, duplicate keys, change report, manifests, limits |
-| [docs/DATA_HANDLING.md](docs/DATA_HANDLING.md) | Procedures for receiving, processing, and deleting real customer files |
-| [docs/pilot](docs/pilot/README.md) | Pilot kit: workflow, customer overview, intake, scope template, delivery checklist, owner decisions, rehearsal, cross-run assessment |
-| [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) | Module layout, legacy pipeline, PostgreSQL, FastAPI, dashboard, Docker, testing |
-| [docs/BRAND.md](docs/BRAND.md) | Ordixa colors, typography, and layout rules |
+| [docs/ORDIXA.md](docs/ORDIXA.md) | CLI reference, exit codes, reconciliation profiles, preflight, workbook, manifests |
+| [docs/SPREADSHEET_WORKFLOWS.md](docs/SPREADSHEET_WORKFLOWS.md) | `clean` and `compare`: table profiles, previews, comparison result, outputs |
+| [docs/DEMO.md](docs/DEMO.md) | Harbor Lane walkthrough, hand-computed results, screenshot gallery |
+| [docs/MIGRATING_TO_V2.md](docs/MIGRATING_TO_V2.md) | What 2.0.0 changed, and profile and manifest compatibility |
+| [docs/DATA_HANDLING.md](docs/DATA_HANDLING.md) | Receiving, processing, and deleting real customer files |
+| [docs/pilot](docs/pilot/README.md) | Pilot kit: intake, scope, delivery checklist, owner decisions |
+| [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) | Module layout, the original pipeline, API, dashboard, testing |
 | [examples/ordixa](examples/ordixa/README.md) | Fictional exports, profiles, and hand-computed expectations |
-| [docs/PORTFOLIO.md](docs/PORTFOLIO.md) | Portfolio narrative for the original pipeline |
+| [CHANGELOG.md](CHANGELOG.md) | Release history |
 
 ## Limitations
 
-Ordixa is an early, tested foundation, exercised only on fictional data. It
-has no validated customers yet; the pilot kit is a draft for a first pilot.
+Ordixa is a tested foundation exercised only on fictional data; it has no
+validated customer deployments yet.
 
-- **Shared order references are required.** Payments are matched to orders by
-  the order reference alone: no date, amount, or fuzzy matching.
-- **A run reconciles only the files it is given.** A payment for an order from
-  an earlier export is reported as `order_not_in_run`; nothing persists
-  between runs. See the [cross-run assessment](docs/pilot/CROSS_RUN_ASSESSMENT.md).
+- **Exact matching only.** Payments match orders by a shared order
+  reference, and compared records match by an explicit business key: no
+  fuzzy, date, amount, or row-position matching, and conflicting rows are
+  held back, never resolved.
+- **One batch at a time.** A run covers only the files it is given; nothing
+  persists between runs.
 - **CSV and XLSX only**, one currency per profile, files up to 200 MB.
-  Legacy `.xls` and non-comma delimited files are not supported.
-- **No vendor integrations.** The demo exports imitate common storefront and
-  processor layouts but are not official Shopify, Square, Stripe, or
-  QuickBooks exports; each real format needs a profile checked against samples.
-- **No customer-facing self-service app.** Ordixa is a command-line tool that
-  an operator runs; the workbook is the deliverable.
-- Zero-total orders are rejected, and the workbook is not an accounting ledger.
-- **Clean and compare handle one table at a time** and match only by an
-  exact business key; conflicting rows are held back, never resolved.
+- **Profiles are written by hand**, and the demo exports imitate common
+  vendor layouts without being official Shopify, Square, Stripe, or
+  QuickBooks exports. Each real format needs a profile checked against
+  samples.
+- **A command-line tool**, run from a source checkout by an operator; no
+  hosted app, accounts, scheduling, or vendor connectors.
 
-The full list is in [docs/ORDIXA.md](docs/ORDIXA.md#known-limitations).
+Full lists: [reconciliation](docs/ORDIXA.md#known-limitations) and
+[spreadsheet workflows](docs/SPREADSHEET_WORKFLOWS.md#known-limitations).
 
-## Development
+## Development and testing
 
 ```bash
 python -m pip install -r requirements-dev.txt
 python -m pytest -q
 ruff check .
 ruff format --check .
+python -m scripts.release_check
 ```
 
-CI runs the same checks, then smoke-tests the CLI and the demo, on every push
-and pull request. Screenshots are regenerated from a real demo run with
-`python -m scripts.capture_screenshots` (needs LibreOffice and PyMuPDF; see
-the script header).
+CI runs these checks, then smoke-tests every command and both demos, on
+every push and pull request. Releases follow [docs/RELEASING.md](docs/RELEASING.md).
+The original Business Data Automation pipeline (`python main.py`, with
+optional PostgreSQL, FastAPI, and a dashboard) is still included; see
+[docs/ARCHITECTURE.md](docs/ARCHITECTURE.md).
 
 ## License
 

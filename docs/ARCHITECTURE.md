@@ -65,11 +65,20 @@ validates table profiles with the same TOML helpers, `tabular.py` cleans one
 table and compares two by business key using the shared readers and exact
 parsers, and `tabular_outputs.py` and `change_report.py` write run
 directories through the same atomic publication, manifest, and workbook
-helpers that `verify` already checks. `inventory_demo.py` is their guided
-demo. None of them touch the reconciliation engine.
+helpers that `verify` already checks. `tabular.py` also assesses each
+comparison as complete, complete with warnings, or incomplete.
+`table_preflight.py` backs `check-profile` for table profiles (one file, or a
+before/after pair processed in memory), and `explain.py` backs
+`check-profile --explain` for both profile kinds. `inventory_demo.py` is
+their guided demo. None of them touch the reconciliation engine.
 
 `scripts/capture_screenshots.py` is a maintainer tool that regenerates the
-documentation images from a real demo run.
+documentation images from a real demo run. `scripts/release_check.py` is the
+release gate described in [RELEASING.md](RELEASING.md).
+
+The application version lives in one place, `__version__` in
+`app/ordixa/__init__.py`; `--version`, manifests, and workbooks read it from
+there.
 
 The API and batch workflow share the same reconciliation implementation. Database code stays outside `main.py`, while API routes delegate cross-layer reconciliation work to a focused service rather than duplicating calculations.
 
@@ -346,10 +355,19 @@ The suite covers:
   keys, null-versus-empty rules, formula injection, deterministic outputs and
   fingerprints, atomic runs, verification, and a 20,000-row comparison, with
   the fictional inventory comparison checked against hand-entered results
+- Comparison integrity (missing, ignored, and blank-token columns, Unicode
+  lookalikes, header changes, and the complete/warnings/incomplete result),
+  the read-only table preflight and `--explain`, CLI help examples, summaries,
+  and exit codes
+- Compatibility with runs written before 2.0.0: stored run directories in
+  `tests/fixtures/runs-0.1.0` must still verify, and the current engine must
+  reproduce their fingerprints, deterministic artifacts, and workbook values
+- The release gate: version and tag consistency, changelog, documentation
+  links and commands, and tracked-file checks for secrets and customer data
 
 Database and API integration tests use isolated in-memory SQLite databases, so PostgreSQL and Docker are not required to run the standard suite. A live PostgreSQL/Compose smoke test remains a deliberate next step.
 
-Ruff formatting, Ruff linting, pytest, and CLI and demo smoke tests run in [GitHub Actions](../.github/workflows/ci.yml) on every push and pull request.
+Ruff formatting, Ruff linting, pytest, the release checks, and CLI and demo smoke tests run in [GitHub Actions](../.github/workflows/ci.yml) on every push and pull request. [Release validation](../.github/workflows/release.yml) reruns CI for release branches and tags and adds a clean runtime installation, the demos from that installation, and a dependency audit; it has read-only permissions and never publishes.
 
 ## Engineering decisions
 

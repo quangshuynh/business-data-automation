@@ -40,9 +40,56 @@ python -m app.ordixa verify --run output/inventory-comparison/run-<id> \
   --input examples/ordixa/exports/inventory
 ```
 
-`check-profile` validates a table profile, and with `--input <file>` dry-runs
-the cleaning in memory and prints counts and issue codes without writing
-anything (add `--json` for a machine-readable report).
+Before a real run, preview how the profile reads the files (see
+[Previewing a profile](#previewing-a-profile)):
+
+```bash
+python -m app.ordixa check-profile --profile examples/ordixa/profiles/inventory-compare.toml \
+  --before examples/ordixa/exports/inventory/inventory-before.csv \
+  --after examples/ordixa/exports/inventory/inventory-after.csv --explain
+```
+
+## Previewing a profile
+
+A hand-written profile can be valid TOML and still produce misleading
+results: a header renamed in the latest export, a blank token that also
+erases real zeros, a comparison column quietly ignored. `check-profile` is
+the read-only way to catch these before a run. It processes the files in
+memory with the same code as `clean` and `compare`, writes nothing, and
+prints file names, headers, column names, issue codes, and counts, never
+cell values.
+
+| Form | What it checks |
+| --- | --- |
+| `check-profile --profile P` | the profile itself |
+| `check-profile --profile P --input FILE` | one export, as `clean` would read it |
+| `check-profile --profile P --before A --after B` | both exports and the comparison itself (compare profiles only) |
+| add `--explain` | also print the source-to-output column mapping, which configured headers were found in each file, and every active normalization rule |
+| add `--json` | the same report as one JSON document |
+
+| Finding | Level |
+| --- | --- |
+| File missing or in a format the profile does not accept; unreadable; above 200 MB; missing worksheet; duplicate headers | blocking |
+| Configured required column missing (every one listed, closest header named) | blocking |
+| Header that suggests card, bank, government ID, or credential data, whether mapped or not | blocking |
+| Configured optional column missing from the file (its values would be blank) | warning |
+| Optional column missing from only one comparison input (the comparison would be incomplete) | warning |
+| Blank token that is also a valid decimal, integer, or date value of a column, such as `0` | warning |
+| Blank token found in a key column (those rows would be rejected) | warning |
+| Two declared date formats that read the same text as different dates | warning |
+| Text values in decomposed Unicode form | warning |
+| Columns the compare profile ignores, and how many matched records differ in them | warning |
+| Unused column whose header suggests personal data (address, email, notes) | warning |
+| More than 20% of rows have values the profile cannot read | warning |
+| Every [comparison result](#comparison-result) finding of the previewed comparison | warning |
+| Unused source columns by header; mapped headers that suggest personal data; text business keys | note |
+
+The result is `BLOCKED` (exit 3), `REVIEW` (warnings, or rows that would be
+rejected), or `READY` (exit 0 for both). `--explain` never changes the exit
+code or hides a finding: a preview of a file that cannot be processed is
+still blocked. The single-file `--json` report keeps the row-count and
+`issues` keys printed by earlier versions and adds `readiness`, `findings`,
+`inputs`, and, with `--explain`, `explain`.
 
 ## Table profiles
 
@@ -159,8 +206,45 @@ and `1000.00` are equal, as are `10/05/2026` and `2026-10-05`, a padded cell
 and a trimmed one, and a configured blank token and an empty cell. Anything
 the profile does not normalize is a change: capitalization, punctuation,
 inner spacing (unless `collapse`), accents, and Unicode spelling. A column
-missing from either file is not compared and is noted, rather than turning
-every record into a change.
+missing from either file is not compared, rather than turning every record
+into a change, and the comparison is then marked incomplete (below).
+
+Text that differs only in Unicode form (an accent stored as one character in
+one export and as a letter plus a combining mark in the other) is still a
+change, because the stored text differs, but each such value gets a
+`unicode_form_differs` note. An added key and a removed key that are equal
+once Unicode is normalized both get a `key_unicode_form_differs` note.
+Nothing is normalized or merged automatically.
+
+### Comparison result
+
+The categories alone cannot say whether a record counted as unchanged was
+actually compared in full. Every comparison is therefore assessed:
+
+| Result | Meaning |
+| --- | --- |
+| Complete | every record was classified and every configured column compared |
+| Complete with warnings | every record was classified, but something the categories do not show needs review |
+| Incomplete | some records or columns could not be compared; Unchanged does not cover them |
+
+| Finding | Makes the result |
+| --- | --- |
+| `column_missing_from_one_export`: a configured column is in only one export | incomplete |
+| `unclassified_keys`: ambiguous or invalid keys | incomplete |
+| `rejected_rows_without_key`: rejected rows whose key could not be read | incomplete |
+| `column_missing_from_both`: a configured column is in neither export | warning |
+| `ignored_column_differs`: matched records differ in a column the profile ignores | warning |
+| `unicode_only_changes`, `unicode_key_pairs`: differences only in Unicode form | warning |
+| `duplicate_rows_removed`: exact duplicate rows were removed | warning |
+| `source_headers_differ`: the two exports have different headers | warning |
+| `blank_token_is_a_value`: blank tokens erased real decimal, integer, or date values | warning |
+
+The result leads the workbook's Summary sheet, is printed by `compare` and
+the inventory demo, and is recorded in the manifest as
+`result.assessment` (`level` plus `findings` with code, count, and message).
+Findings name columns and counts, never cell values. An incomplete
+comparison still exits 0, like a run with rejected rows: read the result
+before relying on Unchanged.
 
 ## Outputs
 
@@ -174,8 +258,9 @@ earlier runs are never overwritten.
 | compare | `comparison_report.xlsx`, `added_records.csv`, `removed_records.csv`, `modified_values.csv`, `comparison_issues.csv`, `manifest.json` |
 
 The change report workbook has five sheets in the Ordixa palette:
-**Summary** (record counts, changed values by column, reading guide,
-processing details, input checksums), **Added Records**, **Removed Records**,
+**Summary** (comparison result and its findings, record counts, changed
+values by column, reading guide, processing details, input checksums),
+**Added Records**, **Removed Records**,
 **Modified Records** (business key, changed column, previous value, new
 value, and the signed change for numbers), and **Data Quality Issues**. Every
 value passes the existing formula-injection guard, identifiers are text
@@ -188,7 +273,10 @@ cells, and nothing is a formula.
 the code version, each input's role, name, SHA-256, and row count, row and
 issue counts, comparison totals, artifact row counts, and a
 `result_fingerprint` over the logical result (records, changes, issues,
-counts), not timestamps or directory names. Manifests hold no cell values.
+counts), not timestamps or directory names. Compare manifests written by
+2.0.0 also hold the `assessment`; it sits outside the fingerprint, so a
+comparison of the same files keeps the fingerprint it had before 2.0.0.
+Manifests hold no cell values.
 
 **Verification** uses the existing command. For a comparison whose files sit
 in two folders, repeat `--input`:
@@ -237,7 +325,9 @@ location or category if a run is too slow.
   per profile; integers accept no thousands separators.
 - Blank tokens are exact, case-sensitive matches.
 - Unicode is compared exactly; visually identical but differently encoded
-  text counts as a change.
+  text counts as a change (flagged with a note, never merged).
+- Comparison is all-or-nothing per column: a column missing from one export
+  is skipped for every record, and the run is marked incomplete.
 - XLSX identifiers stored as numbers have already lost leading zeros in the
   workbook; they cannot be restored. Formula cells are read by cached value.
 - No history: each comparison covers exactly two files.
@@ -250,9 +340,13 @@ location or category if a run is too slow.
 - **Reuse, not a framework.** The workflows reuse the CSV/XLSX readers, size
   limit, identifier, amount, and date parsers, formula guard, workbook
   styles, output-path checks, run publication, and verification. The new
-  code is `tabular_profile.py` (profiles), `tabular.py` (cleaning and
-  comparison), `tabular_outputs.py` and `change_report.py` (run directories
-  and workbook), and `inventory_demo.py`.
+  code is `tabular_profile.py` (profiles), `tabular.py` (cleaning,
+  comparison, and the comparison result), `tabular_outputs.py` and
+  `change_report.py` (run directories and workbook), `table_preflight.py`
+  and `explain.py` (the read-only preview), and `inventory_demo.py`.
+- **Disclose, never repair.** Unicode lookalikes, ignored-column
+  differences, and missing columns are reported, not normalized or filled
+  in, so the cleaned values stay exactly what the source contained.
 - **Hold back instead of choose.** Wherever two rows disagree about one key,
   every copy is withheld and reported; the operator fixes the source.
 - **Canonical text for comparison.** Values are compared by their cleaned
