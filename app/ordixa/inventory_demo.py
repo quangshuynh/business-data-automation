@@ -11,6 +11,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 from app.ordixa.cli import (
+    ASSESSMENT_TEXT,
     EXIT_INTEGRITY,
     EXIT_OK,
     EXIT_OUTPUT,
@@ -142,10 +143,17 @@ def main(argv=None):
         f"{totals['invalid_keys']} SKUs with rejected rows held back; "
         f"{totals['unkeyed_rejected_rows']} row without a SKU"
     )
+    assessment = manifest["result"]["assessment"]
+    print(f"  result: {ASSESSMENT_TEXT[assessment['level']]}")
+    for item in assessment["findings"]:
+        print(f"    {item['level']}: {item['message']}")
 
     step(4, "Change report workbook")
     print(f"  open {relative(compare_dir / REPORT_NAME)}")
-    print("  Summary - record counts, changes by column, inputs and checksums")
+    print(
+        "  Summary - comparison result, record counts, changes by column, inputs "
+        "and checksums"
+    )
     print("  Added / Removed Records - SKUs found in only one week")
     print("  Modified Records - each changed column with previous and new value")
     print("  Data Quality Issues - every held-back row and why")
