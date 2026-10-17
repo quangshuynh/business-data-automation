@@ -123,3 +123,56 @@ def test_manifest_fields_from_0_1_0_are_all_still_written(name, tmp_path):
     assert set(old) <= set(new)
     for section in ("result", "execution"):
         assert set(old[section]) <= set(new[section]), section
+
+
+# Summary rows that describe the run rather than its result
+RUN_SPECIFIC_LABELS = {"Run ID", "Generated (UTC)", "Application version"}
+
+
+def sheet_values(sheet):
+    """
+    reads every cell value of a sheet, leaving out run-specific metadata
+    :param sheet: worksheet
+    :returns: list of row tuples
+    """
+    rows = []
+    for row in sheet.iter_rows(values_only=True):
+        if row and row[0] in RUN_SPECIFIC_LABELS:
+            continue
+        if row and isinstance(row[0], str) and " generated " in row[0]:
+            continue
+        rows.append(row)
+    return rows
+
+
+@pytest.mark.parametrize(
+    "name",
+    ["reconcile-harbor-lane", "reconcile-juniper-row", "compare-inventory"],
+)
+def test_workbook_values_match_pre_release_runs(name, tmp_path):
+    """
+    tests that every workbook figure and record is unchanged since 0.1.0
+
+    the reconciliation workbook is compared sheet by sheet in full; the change
+    report gained a Comparison result section on its Summary sheet in 2.0.0,
+    so only its record sheets are compared cell for cell
+    :param name: fixture directory name
+    :param tmp_path: pytest temporary directory
+    :returns: none
+    """
+    from openpyxl import load_workbook
+
+    old_dir = FIXTURES / name
+    new_dir, manifest = reproduce(name, tmp_path)
+    (workbook_name,) = [
+        o["file"] for o in manifest["outputs"] if o["file"].endswith(".xlsx")
+    ]
+    old = load_workbook(old_dir / workbook_name)
+    new = load_workbook(new_dir / workbook_name)
+    assert old.sheetnames == new.sheetnames
+    for title in old.sheetnames:
+        if name == "compare-inventory" and title == "Summary":
+            continue
+        assert sheet_values(new[title]) == sheet_values(old[title]), title
+    old.close()
+    new.close()
