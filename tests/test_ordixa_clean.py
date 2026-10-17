@@ -472,3 +472,27 @@ def test_cleaning_without_a_key_keeps_identical_keys(tmp_path):
     result = clean_rows(tmp_path, rows, key=[])
     assert len(result.records) == 2
     assert result.conflicting_keys == set()
+
+
+def test_xlsx_worksheet_is_chosen_by_name(tmp_path):
+    """
+    tests that [input] sheet selects the worksheet and a missing one is named
+    :param tmp_path: pytest temporary directory
+    :returns: none
+    """
+    workbook = Workbook()
+    workbook.active.title = "Notes"
+    workbook.active.append(["not", "the", "table"])
+    sheet = workbook.create_sheet("Inventory")
+    sheet.append(HEADER)
+    sheet.append(["SKU-1", "Mug", "3.00", 1, None])
+    path = tmp_path / "items.xlsx"
+    workbook.save(path)
+
+    def choose(name):
+        return lambda document: document["input"].update(sheet=name)
+
+    result = clean_table(table_profile("clean", choose("Inventory")), path)
+    assert [r["sku"] for r in cleaned(result)] == ["SKU-1"]
+    with pytest.raises(InputError, match="no worksheet named 'Stock'"):
+        clean_table(table_profile("clean", choose("Stock")), path)
