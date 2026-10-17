@@ -51,13 +51,31 @@ Describe an unfamiliar export before writing a profile (read-only, see
 python -m app.ordixa inspect --input examples/ordixa/exports/text-ids
 ```
 
+Clean one table, or compare two versions of it by business key, with a
+table profile instead of a reconciliation profile (see
+[SPREADSHEET_WORKFLOWS.md](SPREADSHEET_WORKFLOWS.md)):
+
+```bash
+python -m app.ordixa clean --profile examples/ordixa/profiles/inventory-clean.toml   --input examples/ordixa/exports/inventory/inventory-before.csv --out output/inventory-clean
+python -m app.ordixa compare --profile examples/ordixa/profiles/inventory-compare.toml   --before examples/ordixa/exports/inventory/inventory-before.csv   --after examples/ordixa/exports/inventory/inventory-after.csv --out output/inventory-comparison
+```
+
+| Command | Purpose |
+| --- | --- |
+| `run` | reconcile a directory of order, payment, and customer exports |
+| `check-profile` | validate any profile; with `--input`, preflight a batch or dry-run a clean |
+| `inspect` | describe unfamiliar exports without printing cell values |
+| `verify` | re-check a finished run against its manifest; `--input` may repeat |
+| `clean` | standardize one CSV/XLSX table with a clean profile |
+| `compare` | report added, removed, and modified records between two exports |
+
 | Exit code | Meaning |
 | --- | --- |
 | 0 | Run completed (rejected rows are reported, not fatal); `inspect` read every file; preflight found nothing blocking |
 | 1 | Unexpected internal error; details are withheld unless `ORDIXA_DEBUG=1` |
 | 2 | Invalid profile or command usage |
 | 3 | Input problem: missing directory, dataset, column, oversized or unreadable file; `inspect` could not read a file; preflight is blocked |
-| 4 | Reconciliation integrity check failed, nothing written; `verify` found a mismatch |
+| 4 | Reconciliation or comparison integrity check failed, nothing written; `verify` found a mismatch |
 | 5 | Output location refused or not writable; nothing kept |
 
 `--out` is a parent directory. Output inside the input directory or inside the
@@ -413,6 +431,9 @@ Phase 1A (profile-driven imports) and Phase 1B (import hardening) are merged
 into `main`. Phase 1A profiles work unchanged; their results are identical.
 Interval 4 added the pilot preflight, the `verify` command, and the
 [pilot kit](pilot/README.md); it did not change reconciliation results.
+Interval 5 added the [spreadsheet `clean` and `compare`
+workflows](SPREADSHEET_WORKFLOWS.md) with their own table profiles; it did
+not change reconciliation results, manifests, or fingerprints.
 
 ## Roadmap (not implemented)
 

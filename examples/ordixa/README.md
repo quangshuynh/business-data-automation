@@ -26,7 +26,9 @@ exports/
 │                   an XLSX processor export, realistic mix of issues
 ├── pilot/          November 2026 pilot onboarding: three deliveries of one
 │                   batch (missing file, changed header, final batch)
-└── text-ids/       "Juniper Row Ceramics": opaque text identifiers
+├── text-ids/       "Juniper Row Ceramics": opaque text identifiers
+└── inventory/      "Saltmarsh Mercantile": two weekly inventory exports for
+                    the clean and compare workflows
 ```
 
 `clean/`, `problematic/`, and `text-ids/` are compact test fixtures.
@@ -149,3 +151,41 @@ Totals: order value 2,798.75; payments 1,496.25; refunds 25.00; adjustments
 - `PMT-291107` cites `#4016`, a transposed reference. Its amount equals
   `#4106`'s total, but Ordixa never matches by amount, so `#4106` stays unpaid
   until the customer confirms the reference.
+
+## Inventory exports: clean and compare (October 2026)
+
+`exports/inventory` belongs to a third invented business, "Saltmarsh
+Mercantile", a general store with 120 products. It is used by the
+[spreadsheet workflows](../../docs/SPREADSHEET_WORKFLOWS.md) with
+[`profiles/inventory-clean.toml`](profiles/inventory-clean.toml) and
+[`profiles/inventory-compare.toml`](profiles/inventory-compare.toml), and by
+`python -m app.ordixa.inventory_demo`. SKUs come in three styles: `SKU-0001`,
+supplier numbers with leading zeros (`000123`), and seed codes (`BRM-001`).
+Supplier contact emails use `example.com` and are not mapped, so they never
+reach an output.
+
+`inventory-before.csv` (week of 5 October, 121 rows) has formatting noise
+that cleaning normalizes: padded SKUs and names, a double inner space,
+`$37.96`-style and short (`9.5`) prices, `MM/DD/YYYY` and ISO dates, `N/A`
+and `-` category placeholders, and `SKU-0042` exported twice with only
+formatting differences. Cleaning it writes 120 rows, removes 1 exact
+duplicate, and rejects nothing.
+
+`inventory-after.csv` (week of 12 October, 124 rows) reorders rows and
+columns. Expected comparison, computed by hand:
+
+| Category | Count | SKUs |
+| --- | ---: | --- |
+| Added | 6 | 000138, 000139, BRM-016, SKU-0091, SKU-0092, SKU-0093 |
+| Removed | 4 | 000129, BRM-011, SKU-0013, SKU-0058 |
+| Modified | 19 | 8 price changes (000125, BRM-003, BRM-008, SKU-0004, SKU-0010, SKU-0021, SKU-0035, SKU-0050); 10 stock changes (000131, 000134, BRM-005, SKU-0002, SKU-0004, SKU-0017, SKU-0029, SKU-0044, SKU-0061, SKU-0077); category of SKU-0066; name case of SKU-0083 (`Mug` to `mug`) |
+| Ambiguous | 1 | SKU-0070, exported twice with stock 22 and 26 |
+| Invalid | 2 | SKU-0025 (blank price), SKU-0048 (blank stock) |
+| Unchanged | 94 | including formatting-only edits to SKU-0009 (`$` price), SKU-0028 and SKU-0055 (placeholder categories), SKU-0030 (trailing spaces), and 000123 (padded stock) |
+
+One further row has no SKU and is rejected without a key. SKU-0004 changes
+both price and stock, so there are 20 changed values across 19 modified
+products. Price changes range from −2.50 to +5.00, including a one-cent
+change on SKU-0050 (68.20 to 68.19). The `last_counted` date changes for
+every product and is ignored by the compare profile. Tests check these
+values in `tests/test_ordixa_inventory_fixtures.py`.

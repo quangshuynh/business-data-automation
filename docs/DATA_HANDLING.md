@@ -21,6 +21,13 @@ They are collected, with suggested defaults, in the approval checklist
 - Prints file names, counts, totals, and issue codes. It never prints row
   values unless `inspect --preview` (redacted to character shapes) or
   `ORDIXA_DEBUG=1` is used.
+- For the spreadsheet [`clean` and `compare`](SPREADSHEET_WORKFLOWS.md)
+  workflows, `cleaned_data.csv` holds every mapped column, the issue CSVs
+  hold offending source values, and the comparison report and CSVs hold
+  both the previous and the current value of every changed field. Treat
+  these run directories exactly like reconciliation runs. Columns the
+  profile does not map are never copied into any output, so leave
+  unneeded columns unmapped. Their manifests hold no row values.
 
 ## Receiving files
 
