@@ -9,7 +9,8 @@ matches records only by the explicit business key
 
 import math
 import re
-from collections import defaultdict
+import unicodedata
+from collections import Counter, defaultdict
 from dataclasses import dataclass, field
 from datetime import date, datetime
 from decimal import Decimal
@@ -39,6 +40,16 @@ UNCHANGED = "unchanged"
 AMBIGUOUS = "ambiguous"
 INVALID = "invalid"
 CHANGE_KINDS = (ADDED, REMOVED, MODIFIED, UNCHANGED, AMBIGUOUS, INVALID)
+
+# how far a comparison can be trusted: complete means every record was
+# classified and every configured column compared; warnings mean the result is
+# complete but has differences the categories alone do not show; incomplete
+# means some records or columns could not be compared, so "unchanged" does not
+# cover them
+COMPLETE = "complete"
+COMPLETE_WITH_WARNINGS = "complete_with_warnings"
+INCOMPLETE = "incomplete"
+ASSESSMENT_LEVELS = (COMPLETE, COMPLETE_WITH_WARNINGS, INCOMPLETE)
 
 # report order: single-file runs, then the earlier and later export
 SIDE_ORDER = {"input": 0, "before": 1, "after": 2, "both": 3}
@@ -137,6 +148,9 @@ class CleanResult:
     rejected_keys: set = field(default_factory=set)
     unkeyed_rejections: int = 0
     stats: dict = field(default_factory=dict)
+    # (column, token) -> cells blanked; kept out of counts() so result
+    # fingerprints match runs written before it existed
+    blank_hits: Counter = field(default_factory=Counter)
 
     @property
     def inputs(self):
@@ -200,6 +214,9 @@ class CompareResult:
     removed: list
     changes: list
     issues: list
+    ignored_differences: dict = field(default_factory=dict)
+    unicode_changes: int = 0
+    unicode_key_pairs: int = 0
 
     @property
     def inputs(self):
@@ -208,6 +225,14 @@ class CompareResult:
         :returns: list of input files
         """
         return [self.before.input, self.after.input]
+
+    def assessment(self):
+        """
+        says whether the comparison is complete, complete with warnings, or
+        incomplete, and why, using counts and column names only
+        :returns: dictionary with level and findings
+        """
+        return assess_comparison(self)
 
     def keys_with(self, kind):
         """
@@ -323,13 +348,14 @@ def source_text(value):
     return identifier_spelling(value) if not isinstance(value, str) else value
 
 
-def normalize_value(raw, column, profile, stats):
+def normalize_value(raw, column, profile, stats, blank_hits=None):
     """
     applies the profile's whitespace, blank, and type rules to one cell
     :param raw: raw cell value
     :param column: column specification
     :param profile: table profile
     :param stats: counters updated with the transformations applied
+    :param blank_hits: optional counter of (column, token) blank-token matches
     :returns: typed value, or none for blank
     """
     if raw is None or (isinstance(raw, float) and math.isnan(raw)):
@@ -345,6 +371,8 @@ def normalize_value(raw, column, profile, stats):
             return None
         if text in profile.blank_values:
             stats["blank_tokens_normalized"] += 1
+            if blank_hits is not None:
+                blank_hits[(column.name, text)] += 1
             return None
         value = text
     else:
@@ -438,13 +466,14 @@ def clean_table(profile, path, role="input"):
 
     records = []
     rejected = []
+    blank_hits = Counter()
     for source in table.rows:
         values = {}
         problems = []
         for column in profile.columns:
             raw = source.values.get(column.source)
             try:
-                value = normalize_value(raw, column, profile, stats)
+                value = normalize_value(raw, column, profile, stats, blank_hits)
             except NormalizationError as error:
                 problems.append((column, error.code, raw))
                 value = None
@@ -489,6 +518,7 @@ def clean_table(profile, path, role="input"):
         unmapped_columns=unmapped,
         missing_columns=missing,
         stats=stats,
+        blank_hits=blank_hits,
     )
     result.rejected_keys = {key for key in rejected if key is not None}
     result.unkeyed_rejections = sum(1 for key in rejected if key is None) + len(
@@ -647,6 +677,8 @@ def compare_tables(profile, before_path, after_path):
             )
         )
 
+    ignored = [name for name in profile.ignore if name not in skipped]
+    ignored_differences = Counter()
     before_index = {record.key: record for record in before.records}
     after_index = {record.key: record for record in after.records}
     keys = (
@@ -684,6 +716,48 @@ def compare_tables(profile, before_path, after_path):
             ]
             status[key] = MODIFIED if found else UNCHANGED
             changes.extend(found)
+            for name in ignored:
+                if as_text(old[name]) != as_text(new[name]):
+                    ignored_differences[name] += 1
+
+    unicode_changes = [
+        change
+        for change in changes
+        if isinstance(change.before, str)
+        and isinstance(change.after, str)
+        and nfc(change.before) == nfc(change.after)
+    ]
+    for change in unicode_changes:
+        issues.append(
+            TableIssue(
+                "both",
+                "",
+                0,
+                NOTE,
+                "unicode_form_differs",
+                "before and after differ only in Unicode form (such as composed "
+                "and decomposed accents); reported as modified because the "
+                "stored text differs",
+                key=key_text(change.key),
+                column=change.column,
+                source_column=profile.column(change.column).source,
+            )
+        )
+    pairs = unicode_key_pairs(added, removed)
+    for key in pairs:
+        issues.append(
+            TableIssue(
+                "both",
+                "",
+                0,
+                NOTE,
+                "key_unicode_form_differs",
+                "this added or removed key matches a key in the other export "
+                "except for Unicode form; it is probably the same record "
+                "re-encoded, not a real addition or removal",
+                key=key_text(key),
+            )
+        )
 
     result = CompareResult(
         profile=profile,
@@ -696,9 +770,47 @@ def compare_tables(profile, before_path, after_path):
         removed=removed,
         changes=changes,
         issues=issues,
+        ignored_differences={
+            name: ignored_differences[name]
+            for name in ignored
+            if ignored_differences[name]
+        },
+        unicode_changes=len(unicode_changes),
+        unicode_key_pairs=len(pairs) // 2,
     )
     check_comparison(result)
     return result
+
+
+def nfc(text):
+    """
+    gives the canonical composed Unicode form, used only to detect lookalikes
+    :param text: text value
+    :returns: NFC-normalized text
+    """
+    return unicodedata.normalize("NFC", text)
+
+
+def unicode_key_pairs(added, removed):
+    """
+    finds added and removed keys that are equal once Unicode is normalized
+
+    nothing is merged: the records stay added and removed, and each key of a
+    pair gets a note so a reviewer can see the likely re-encoding
+    :param added: added records
+    :param removed: removed records
+    :returns: sorted list of the keys involved, added and removed
+    """
+    removed_by_form = defaultdict(list)
+    for record in removed:
+        removed_by_form[tuple(nfc(part) for part in record.key)].append(record.key)
+    involved = set()
+    for record in added:
+        matches = removed_by_form.get(tuple(nfc(part) for part in record.key), [])
+        if len(matches) == 1:
+            involved.add(record.key)
+            involved.add(matches[0])
+    return sorted(involved, key=key_sort)
 
 
 def check_comparison(result):
@@ -720,3 +832,225 @@ def check_comparison(result):
         raise TabularIntegrityError("after records do not add up")
     if counts["modified"] != len({change.key for change in result.changes}):
         raise TabularIntegrityError("modified records do not match value changes")
+
+
+def token_is_value(token, column, profile):
+    """
+    checks whether a blank token is also a real value of a typed column
+    :param token: configured blank token
+    :param column: column specification
+    :param profile: table profile
+    :returns: true when the token would parse as a decimal, integer, or date
+    """
+    try:
+        if column.type == "decimal":
+            parse_amount(token, profile.amounts)
+        elif column.type == "integer":
+            parse_integer(token)
+        elif column.type == "date":
+            parse_date(token, profile.date_formats)
+        else:
+            return False
+    except NormalizationError:
+        return False
+    return True
+
+
+def assessment_finding(level, code, count, message):
+    """
+    builds one comparison assessment finding
+    :param level: incomplete or warning
+    :param code: stable machine-readable code
+    :param count: records, keys, rows, or values involved
+    :param message: explanation naming columns, never cell values
+    :returns: finding dictionary
+    """
+    return {"level": level, "code": code, "count": count, "message": message}
+
+
+def missing_column_findings(result, matched):
+    """
+    reports configured columns that could not be compared
+    :param result: compare result
+    :param matched: records found in both exports
+    :returns: list of findings
+    """
+    profile = result.profile
+    before_missing = set(result.before.missing_columns)
+    after_missing = set(result.after.missing_columns)
+    findings = []
+    for name in result.skipped_columns:
+        if name in profile.ignore:
+            continue
+        source = profile.column(name).source
+        if name in before_missing and name in after_missing:
+            findings.append(
+                assessment_finding(
+                    "warning",
+                    "column_missing_from_both",
+                    0,
+                    f"column {name} (source {source!r}) is in neither export, so "
+                    "it was not compared",
+                )
+            )
+            continue
+        side = "earlier" if name in before_missing else "later"
+        findings.append(
+            assessment_finding(
+                INCOMPLETE,
+                "column_missing_from_one_export",
+                matched,
+                f"column {name} (source {source!r}) is missing from the {side} "
+                f"export, so it was not compared; the {matched} matched "
+                "record(s) may have unreported changes in it",
+            )
+        )
+    return findings
+
+
+def header_findings(result):
+    """
+    reports source headers present in only one of the two exports
+    :param result: compare result
+    :returns: list of findings
+    """
+    before_header = [name for name in result.before.header if name]
+    after_header = [name for name in result.after.header if name]
+    only_before = [name for name in before_header if name not in after_header]
+    only_after = [name for name in after_header if name not in before_header]
+    if not (only_before or only_after):
+        return []
+    parts = []
+    if only_before:
+        parts.append(f"only in the earlier export: {', '.join(only_before)}")
+    if only_after:
+        parts.append(f"only in the later export: {', '.join(only_after)}")
+    return [
+        assessment_finding(
+            "warning",
+            "source_headers_differ",
+            len(only_before) + len(only_after),
+            "the exports have different headers (" + "; ".join(parts) + "); "
+            "confirm no mapped column was renamed",
+        )
+    ]
+
+
+def blank_token_findings(profile, sides):
+    """
+    reports blank tokens that erased real decimal, integer, or date values
+    :param profile: table profile
+    :param sides: clean results whose blank-token matches are checked
+    :returns: list of findings
+    """
+    erased = Counter()
+    for side in sides:
+        for (name, token), count in side.blank_hits.items():
+            if token_is_value(token, profile.column(name), profile):
+                erased[name] += count
+    return [
+        assessment_finding(
+            "warning",
+            "blank_token_is_a_value",
+            count,
+            f"{count} cell(s) in {name} matched a blank token that is also a "
+            f"valid {profile.column(name).type} value and were treated as blank",
+        )
+        for name, count in sorted(erased.items())
+    ]
+
+
+def assess_comparison(result):
+    """
+    judges how far a comparison can be trusted, from counts and column names
+
+    incomplete findings mean some records were not classified or some
+    configured columns were not compared, so unchanged does not cover them;
+    warnings mean the categories are complete but hide something a reviewer
+    should know about
+    :param result: compare result
+    :returns: dictionary with level and findings
+    """
+    counts = result.counts()
+    matched = counts["modified"] + counts["unchanged"]
+    findings = missing_column_findings(result, matched)
+
+    unclassified = counts["ambiguous_keys"] + counts["invalid_keys"]
+    if unclassified:
+        findings.append(
+            assessment_finding(
+                INCOMPLETE,
+                "unclassified_keys",
+                unclassified,
+                f"{unclassified} business key(s) could not be classified "
+                f"({counts['ambiguous_keys']} ambiguous, {counts['invalid_keys']} "
+                "invalid); they are in no change category until the source rows "
+                "are fixed",
+            )
+        )
+    if counts["unkeyed_rejected_rows"]:
+        findings.append(
+            assessment_finding(
+                INCOMPLETE,
+                "rejected_rows_without_key",
+                counts["unkeyed_rejected_rows"],
+                f"{counts['unkeyed_rejected_rows']} rejected row(s) had no usable "
+                "business key and are in no change category",
+            )
+        )
+
+    for name, count in result.ignored_differences.items():
+        findings.append(
+            assessment_finding(
+                "warning",
+                "ignored_column_differs",
+                count,
+                f"{count} matched record(s) differ in {name}, which the profile "
+                "ignores; those differences are not reported as changes",
+            )
+        )
+    if result.unicode_changes:
+        findings.append(
+            assessment_finding(
+                "warning",
+                "unicode_only_changes",
+                result.unicode_changes,
+                f"{result.unicode_changes} changed value(s) differ only in Unicode "
+                "form; see unicode_form_differs in the issues",
+            )
+        )
+    if result.unicode_key_pairs:
+        findings.append(
+            assessment_finding(
+                "warning",
+                "unicode_key_pairs",
+                result.unicode_key_pairs,
+                f"{result.unicode_key_pairs} added key(s) match a removed key "
+                "except for Unicode form; they may be the same records re-encoded",
+            )
+        )
+    duplicates = sum(
+        side.counts()["duplicate_rows_removed"]
+        for side in (result.before, result.after)
+    )
+    if duplicates:
+        findings.append(
+            assessment_finding(
+                "warning",
+                "duplicate_rows_removed",
+                duplicates,
+                f"{duplicates} exact duplicate row(s) were removed before comparing",
+            )
+        )
+    findings += header_findings(result)
+    findings += blank_token_findings(result.profile, (result.before, result.after))
+
+    levels = {item["level"] for item in findings}
+    if INCOMPLETE in levels:
+        level = INCOMPLETE
+    elif findings:
+        level = COMPLETE_WITH_WARNINGS
+    else:
+        level = COMPLETE
+    findings.sort(key=lambda item: item["level"] != INCOMPLETE)
+    return {"level": level, "findings": findings}

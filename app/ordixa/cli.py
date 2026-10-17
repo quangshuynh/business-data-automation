@@ -513,9 +513,33 @@ def compare_command(args):
         f"invalid key(s), {counts['unkeyed_rejected_rows']} rejected row(s) "
         "without a key"
     )
+    report_assessment(manifest["result"]["assessment"])
     report(f"change report: {run_dir / REPORT_NAME}")
     report(f"manifest: {run_dir / MANIFEST_NAME} ({manifest['result']['status']})")
     return EXIT_OK
+
+
+ASSESSMENT_TEXT = {
+    "complete": "COMPLETE: every record was classified and every column compared",
+    "complete_with_warnings": (
+        "COMPLETE WITH WARNINGS: every record was classified; review the warnings"
+    ),
+    "incomplete": (
+        "INCOMPLETE: some records or columns could not be compared; unchanged "
+        "does not cover them"
+    ),
+}
+
+
+def report_assessment(assessment):
+    """
+    prints how far a comparison can be trusted, without cell values
+    :param assessment: dictionary from CompareResult.assessment
+    :returns: none
+    """
+    report(f"comparison {ASSESSMENT_TEXT[assessment['level']]}")
+    for item in assessment["findings"]:
+        report(f"  {item['level']}: {item['message']}")
 
 
 def report_run(result, run_dir, manifest):
