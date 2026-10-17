@@ -39,7 +39,7 @@ Application responsibilities are separated by runtime role:
 app/
 ├── api/             HTTP routes, dependencies, and response schemas
 ├── db/              SQLAlchemy models, sessions, and persistence
-├── ordixa/          profile-driven CSV/XLSX imports, workbook, manifests, CLI
+├── ordixa/          profile-driven imports, spreadsheet clean/compare, workbooks, manifests, CLI
 ├── reconciliation/  financial calculations and report construction
 ├── services/        database-to-business-logic coordination
 ├── validators/      structural and record-level validation
@@ -58,6 +58,15 @@ cross-checks totals, `workbook.py` and `manifest.py` write the run directory
 (and back the read-only `verify` command), `inspection.py` backs the read-only
 `inspect` command, and `preflight.py` backs `check-profile --input` by reusing
 discovery, header checks, and the pipeline in memory.
+
+The spreadsheet [`clean` and `compare` workflows](SPREADSHEET_WORKFLOWS.md)
+sit beside reconciliation rather than inside it: `tabular_profile.py`
+validates table profiles with the same TOML helpers, `tabular.py` cleans one
+table and compares two by business key using the shared readers and exact
+parsers, and `tabular_outputs.py` and `change_report.py` write run
+directories through the same atomic publication, manifest, and workbook
+helpers that `verify` already checks. `inventory_demo.py` is their guided
+demo. None of them touch the reconciliation engine.
 
 `scripts/capture_screenshots.py` is a maintainer tool that regenerates the
 documentation images from a real demo run.
@@ -331,6 +340,12 @@ The suite covers:
 - The pilot preflight and `verify` command, and the fictional pilot scenario
   against hand-computed results, including a bounded two-month window and
   scans that keep example data and tracked files fictional
+- Spreadsheet cleaning and comparison: table profiles, trimming, blank
+  tokens, column mapping, exact duplicates versus conflicting keys, leading
+  zeros, exact decimals, dates, Unicode, reordered rows and columns, compound
+  keys, null-versus-empty rules, formula injection, deterministic outputs and
+  fingerprints, atomic runs, verification, and a 20,000-row comparison, with
+  the fictional inventory comparison checked against hand-entered results
 
 Database and API integration tests use isolated in-memory SQLite databases, so PostgreSQL and Docker are not required to run the standard suite. A live PostgreSQL/Compose smoke test remains a deliberate next step.
 

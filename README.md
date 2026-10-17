@@ -49,6 +49,12 @@ files into a reviewed result:
 
 Everything runs locally. No database, account, or network access is needed.
 
+The same foundation also handles single-table exports such as an inventory
+list: **`clean`** standardizes one CSV/XLSX file and reports every row it
+held back, and **`compare`** matches two versions by an explicit business key
+and writes a change report of added, removed, and modified records. See
+[docs/SPREADSHEET_WORKFLOWS.md](docs/SPREADSHEET_WORKFLOWS.md).
+
 ## Product preview
 
 <table>
@@ -104,6 +110,15 @@ Each run creates `output/demo/run-<timestamp>-<id>/` containing
 and `manifest.json`. Open the `.xlsx` file in Excel or LibreOffice. `output/`
 is git-ignored.
 
+Clean and compare the fictional weekly inventory exports:
+
+```bash
+python -m app.ordixa.inventory_demo
+python -m app.ordixa compare --profile examples/ordixa/profiles/inventory-compare.toml \
+  --before examples/ordixa/exports/inventory/inventory-before.csv \
+  --after examples/ordixa/exports/inventory/inventory-after.csv --out output/inventory-comparison
+```
+
 ## Features
 
 | Capability | Status |
@@ -119,6 +134,8 @@ is git-ignored.
 | Branded four-sheet Excel workbook, formula-injection protected, print-ready | Implemented |
 | Run manifest with SHA-256 checksums, result fingerprint, and verification | Implemented |
 | Atomic run directories; earlier runs are never overwritten | Implemented |
+| Spreadsheet `clean`: explicit column mapping, typed values, duplicate and conflicting-key handling | Implemented |
+| Spreadsheet `compare`: keyed added/removed/modified report workbook, no fuzzy matching | Implemented |
 | Original CSV pipeline with optional PostgreSQL, FastAPI, and dashboard | Implemented (legacy path) |
 | Matching payments to orders from earlier runs | Planned |
 | Vendor connectors (Shopify, Square, Stripe, QuickBooks) | Not implemented |
@@ -139,6 +156,7 @@ the test strategy.
 | --- | --- |
 | [docs/ORDIXA.md](docs/ORDIXA.md) | CLI, profile reference, identifiers, normalization, validation, workbook, manifests, limitations |
 | [docs/DEMO.md](docs/DEMO.md) | The fictional Harbor Lane walkthrough, expected results, screenshot gallery |
+| [docs/SPREADSHEET_WORKFLOWS.md](docs/SPREADSHEET_WORKFLOWS.md) | `clean` and `compare`: table profiles, duplicate keys, change report, manifests, limits |
 | [docs/DATA_HANDLING.md](docs/DATA_HANDLING.md) | Procedures for receiving, processing, and deleting real customer files |
 | [docs/pilot](docs/pilot/README.md) | Pilot kit: workflow, customer overview, intake, scope template, delivery checklist, owner decisions, rehearsal, cross-run assessment |
 | [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) | Module layout, legacy pipeline, PostgreSQL, FastAPI, dashboard, Docker, testing |
@@ -164,6 +182,8 @@ has no validated customers yet; the pilot kit is a draft for a first pilot.
 - **No customer-facing self-service app.** Ordixa is a command-line tool that
   an operator runs; the workbook is the deliverable.
 - Zero-total orders are rejected, and the workbook is not an accounting ledger.
+- **Clean and compare handle one table at a time** and match only by an
+  exact business key; conflicting rows are held back, never resolved.
 
 The full list is in [docs/ORDIXA.md](docs/ORDIXA.md#known-limitations).
 

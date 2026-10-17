@@ -1,0 +1,63 @@
+# Ordixa clean profile for the fictional Saltmarsh Mercantile inventory export.
+# Maps the store's headers onto stable output columns, trims and types every
+# value, and holds back rows it cannot use as-is. See
+# docs/SPREADSHEET_WORKFLOWS.md.
+schema_version = 1
+
+[workflow]
+kind = "clean"
+
+[profile]
+name = "inventory-clean"
+version = "1.0.0"
+description = "Fictional general-store inventory export (example data)"
+
+[input]
+formats = ["csv", "xlsx"]
+csv_encoding = "utf-8-sig"
+
+[amounts]
+currency = "USD"
+currency_symbols = ["$"]
+thousands_separator = ","
+decimal_separator = "."
+max_decimal_places = 2
+negative_styles = ["minus"]
+
+[table]
+# one row per SKU; rows sharing a SKU with different values are all held back
+key = ["sku"]
+# cells holding exactly one of these (after trimming) are treated as blank
+blank_values = ["N/A", "n/a", "-"]
+date_formats = ["%Y-%m-%d", "%m/%d/%Y"]
+
+# output columns, in output order; source is the header in the export
+[columns.sku]
+source = "Item SKU"
+type = "identifier"
+required = true
+
+[columns.product_name]
+source = "Product Name"
+required = true
+whitespace = "collapse"
+
+[columns.category]
+source = "Category"
+
+[columns.unit_price]
+source = "Unit Price"
+type = "decimal"
+required = true
+
+[columns.quantity_on_hand]
+source = "Qty On Hand"
+type = "integer"
+required = true
+
+[columns.supplier]
+source = "Supplier"
+
+[columns.last_counted]
+source = "Last Counted"
+type = "date"

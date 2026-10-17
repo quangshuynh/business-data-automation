@@ -20,8 +20,28 @@ from app.ordixa.manifest import (
     write_run_outputs,
 )
 from app.ordixa.pipeline import ReconciliationIntegrityError, process
-from app.ordixa.preflight import format_preflight, preflight
-from app.ordixa.profile import ProfileError, load_profile
+from app.ordixa.preflight import (
+    PERSONAL_HEADER,
+    PROHIBITED_HEADER,
+    format_preflight,
+    preflight,
+)
+from app.ordixa.profile import ProfileError, load_profile, read_profile_document
+from app.ordixa.tabular import (
+    TabularIntegrityError,
+    clean_table,
+    compare_tables,
+)
+from app.ordixa.tabular_outputs import (
+    CLEANED_NAME,
+    REPORT_NAME,
+    write_clean_run,
+    write_compare_run,
+)
+from app.ordixa.tabular_profile import (
+    is_table_profile_document,
+    load_table_profile,
+)
 
 EXIT_OK = 0
 EXIT_UNEXPECTED = 1
@@ -115,7 +135,10 @@ def build_parser():
     """
     parser = argparse.ArgumentParser(
         prog="python -m app.ordixa",
-        description="Profile-driven import, validation, and reconciliation.",
+        description=(
+            "Profile-driven import, validation, and reconciliation, plus "
+            "spreadsheet cleaning and comparison."
+        ),
     )
     parser.add_argument("--version", action="version", version=f"ordixa {__version__}")
     commands = parser.add_subparsers(dest="command", required=True)
@@ -152,17 +175,61 @@ def build_parser():
         "--json", action="store_true", help="print the preflight report as JSON"
     )
 
+    clean = commands.add_parser(
+        "clean",
+        help="clean one CSV/XLSX table with a clean profile",
+        description=(
+            "Maps, trims, and types every column the profile declares, removes "
+            "exact duplicate rows, holds back rows with invalid or conflicting "
+            "values, and writes cleaned_data.csv, cleaning_issues.csv, and a "
+            "manifest into a new run directory. The input is only read."
+        ),
+    )
+    clean.add_argument("--profile", required=True, type=Path, help="TOML profile")
+    clean.add_argument("--input", required=True, type=Path, help="CSV/XLSX file")
+    clean.add_argument(
+        "--out",
+        required=True,
+        type=Path,
+        help="parent directory; each run creates a new run-<id> folder inside it",
+    )
+
+    compare = commands.add_parser(
+        "compare",
+        help="compare two versions of a table by business key",
+        description=(
+            "Cleans both files with the profile's rules, matches records by the "
+            "declared business key only, and writes a change report workbook, "
+            "CSV artifacts, and a manifest into a new run directory."
+        ),
+    )
+    compare.add_argument("--profile", required=True, type=Path, help="TOML profile")
+    compare.add_argument("--before", required=True, type=Path, help="earlier export")
+    compare.add_argument("--after", required=True, type=Path, help="later export")
+    compare.add_argument(
+        "--out",
+        required=True,
+        type=Path,
+        help="parent directory; each run creates a new run-<id> folder inside it",
+    )
+
     verify = commands.add_parser(
         "verify",
         help="re-check a finished run directory against its manifest",
         description=(
             "Read-only. Recomputes output checksums, sizes, CSV row counts, and "
-            "optionally input checksums, and confirms the workbook has no formulas."
+            "optionally input checksums, and confirms workbooks have no formulas."
         ),
     )
     verify.add_argument("--run", required=True, type=Path, help="run-<id> directory")
     verify.add_argument(
-        "--input", type=Path, help="original export directory, to check inputs too"
+        "--input",
+        type=Path,
+        action="append",
+        help=(
+            "original export directory or file, to check inputs too; repeat it "
+            "when a compare run read files from two places"
+        ),
     )
 
     inspect = commands.add_parser(
@@ -245,6 +312,9 @@ def check_profile_command(args):
     if args.json and args.input is None:
         report("--json needs --input", sys.stderr)
         return EXIT_USAGE
+    document, _ = read_profile_document(args.profile)
+    if is_table_profile_document(document):
+        return check_table_profile(args)
     profile = load_profile(args.profile)
     if not args.json:
         # keeps --json output parseable as a single document
@@ -261,6 +331,39 @@ def check_profile_command(args):
     return EXIT_INPUT if result["readiness"] == "blocked" else EXIT_OK
 
 
+def check_table_profile(args):
+    """
+    validates a clean/compare profile and optionally dry-runs it on one file
+    :param args: parsed check-profile arguments
+    :returns: exit code
+    """
+    profile = load_table_profile(args.profile)
+    if not args.json:
+        report(f"profile {profile.name} {profile.version} ({profile.kind}) is valid")
+    if args.input is None:
+        return EXIT_OK
+
+    warn_about_input_location(args.input.parent)
+    result = clean_table(profile, args.input)
+    counts = {
+        **result.counts(),
+        "issues": {
+            code: sum(1 for issue in result.issues if issue.code == code)
+            for code in sorted({issue.code for issue in result.issues})
+        },
+    }
+    if args.json:
+        print(json.dumps(counts, indent=2))
+    else:
+        warn_about_headers(result.header, profile)
+        for name, value in counts.items():
+            if name != "issues":
+                print(f"  {name.replace('_', ' ')}: {value}")
+        for code, count in counts["issues"].items():
+            print(f"  issue {code}: {count}")
+    return EXIT_OK
+
+
 def verify_command(args):
     """
     executes the read-only verify subcommand
@@ -270,9 +373,10 @@ def verify_command(args):
     if not (args.run / MANIFEST_NAME).is_file():
         report(f"input error: {args.run / MANIFEST_NAME} does not exist", sys.stderr)
         return EXIT_INPUT
-    if args.input is not None and not args.input.is_dir():
-        report(f"input error: {args.input} is not a directory", sys.stderr)
-        return EXIT_INPUT
+    for location in args.input or ():
+        if not location.exists():
+            report(f"input error: {location} does not exist", sys.stderr)
+            return EXIT_INPUT
 
     checks = verify_run(args.run, args.input)
     for description, passed in checks:
@@ -307,6 +411,110 @@ def run_command(args):
 
     run_dir, manifest = write_run_outputs(result, args.out, started_at)
     report_run(result, run_dir, manifest)
+    return EXIT_OK
+
+
+def warn_about_headers(header, profile):
+    """
+    warns, by column name only, about headers that suggest sensitive data
+
+    this is the same header heuristic as the pilot preflight, not a privacy
+    scan; unmapped columns are never copied into outputs
+    :param header: source header names
+    :param profile: table profile
+    :returns: none
+    """
+    mapped = {column.source for column in profile.columns}
+    for name in dict.fromkeys(header):
+        if PROHIBITED_HEADER.search(name):
+            where = (
+                "it is mapped, so outputs will contain it"
+                if name in mapped
+                else "it was left out of the outputs"
+            )
+            report(
+                f"warning: column {name!r} looks like card, bank, government ID, or "
+                f"credential data; {where}. Ask for an export without it",
+                sys.stderr,
+            )
+        elif name in mapped and PERSONAL_HEADER.search(name):
+            report(
+                f"note: mapped column {name!r} may hold personal data; outputs "
+                "will contain it",
+                sys.stderr,
+            )
+
+
+def prepare_table_run(args, kind, inputs):
+    """
+    loads a table profile and checks inputs and output location
+    :param args: parsed arguments
+    :param kind: clean or compare
+    :param inputs: input file paths
+    :returns: validated table profile
+    """
+    profile = load_table_profile(args.profile, kind)
+    report(f"profile {profile.name} {profile.version} ({kind}) is valid")
+    for path in inputs:
+        if not path.is_file():
+            raise InputError(f"input file not found: {path}")
+        check_output_location(args.out, path.parent)
+        warn_about_input_location(path.parent)
+    return profile
+
+
+def clean_command(args):
+    """
+    executes the clean subcommand
+    :param args: parsed arguments
+    :returns: exit code
+    """
+    started_at = datetime.now(timezone.utc)
+    profile = prepare_table_run(args, "clean", [args.input])
+    result = clean_table(profile, args.input)
+    warn_about_headers(result.header, profile)
+    counts = result.counts()
+    report(f"read {result.input.name} ({counts['rows_read']} rows)")
+
+    run_dir, manifest = write_clean_run(result, args.out, started_at)
+    report(
+        f"{counts['rows_written']} row(s) written, {counts['rows_rejected']} "
+        f"rejected, {counts['duplicate_rows_removed']} exact duplicate(s) removed, "
+        f"{counts['conflicting_keys']} conflicting key(s)"
+    )
+    report(f"cleaned data: {run_dir / CLEANED_NAME}")
+    report(f"manifest: {run_dir / MANIFEST_NAME} ({manifest['result']['status']})")
+    return EXIT_OK
+
+
+def compare_command(args):
+    """
+    executes the compare subcommand
+    :param args: parsed arguments
+    :returns: exit code
+    """
+    started_at = datetime.now(timezone.utc)
+    profile = prepare_table_run(args, "compare", [args.before, args.after])
+    result = compare_tables(profile, args.before, args.after)
+    warn_about_headers(result.before.header + result.after.header, profile)
+    for side in (result.before, result.after):
+        report(
+            f"read {side.input.role}: {side.input.name} ({side.input.data_rows} rows)"
+        )
+
+    run_dir, manifest = write_compare_run(result, args.out, started_at)
+    counts = result.counts()
+    report(
+        f"{counts['added']} added, {counts['removed']} removed, "
+        f"{counts['modified']} modified, {counts['unchanged']} unchanged"
+    )
+    report(
+        f"{counts['ambiguous_keys']} ambiguous key(s), {counts['invalid_keys']} "
+        f"invalid key(s), {counts['unkeyed_rejected_rows']} rejected row(s) "
+        "without a key"
+    )
+    report(f"change report: {run_dir / REPORT_NAME}")
+    report(f"manifest: {run_dir / MANIFEST_NAME} ({manifest['result']['status']})")
     return EXIT_OK
 
 
@@ -354,6 +562,10 @@ def main(argv=None):
             return check_profile_command(args)
         if args.command == "verify":
             return verify_command(args)
+        if args.command == "clean":
+            return clean_command(args)
+        if args.command == "compare":
+            return compare_command(args)
         return run_command(args)
     except ProfileError as error:
         report(str(error), sys.stderr)
@@ -361,7 +573,7 @@ def main(argv=None):
     except InputError as error:
         report(f"input error: {error}", sys.stderr)
         return EXIT_INPUT
-    except ReconciliationIntegrityError as error:
+    except (ReconciliationIntegrityError, TabularIntegrityError) as error:
         report(f"integrity check failed, no outputs written: {error}", sys.stderr)
         return EXIT_INTEGRITY
     except OSError as error:

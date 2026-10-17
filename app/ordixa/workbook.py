@@ -295,7 +295,7 @@ def style_header(cell, numeric=False):
     )
 
 
-def write_table(sheet, start_row, columns, headers, rows):
+def write_table(sheet, start_row, columns, headers, rows, numeric_columns=None):
     """
     writes a header row and records as a filterable table
     :param sheet: worksheet
@@ -303,11 +303,14 @@ def write_table(sheet, start_row, columns, headers, rows):
     :param columns: canonical column names
     :param headers: display headers in column order
     :param rows: list of dictionaries keyed by canonical column
+    :param numeric_columns: columns whose headers sit right-aligned above
+        figures, defaulting to the reconciliation ledger's
     :returns: last row written
     """
+    numeric_columns = NUMERIC_COLUMNS if numeric_columns is None else numeric_columns
     for index, (column, header) in enumerate(zip(columns, headers), start=1):
         cell = sheet.cell(row=start_row, column=index, value=header)
-        style_header(cell, numeric=column in NUMERIC_COLUMNS)
+        style_header(cell, numeric=column in numeric_columns)
     sheet.row_dimensions[start_row].height = 30
 
     row_number = start_row
@@ -400,12 +403,13 @@ def fit_rows(sheet, columns, start_row=2):
             sheet.row_dimensions[row_number].height = LINE_HEIGHT * lines + 2
 
 
-def set_print_layout(sheet, landscape=True, title_rows=None):
+def set_print_layout(sheet, landscape=True, title_rows=None, tab_color=None):
     """
     prepares a sheet for printing: one page wide, repeated headers, footer
     :param sheet: worksheet
     :param landscape: print in landscape orientation
     :param title_rows: rows repeated on every printed page, such as "1:1"
+    :param tab_color: sheet tab color, defaulting to the reconciliation palette
     :returns: none
     """
     sheet.page_setup.orientation = "landscape" if landscape else "portrait"
@@ -420,7 +424,7 @@ def set_print_layout(sheet, landscape=True, title_rows=None):
     sheet.oddFooter.left.size = 8
     sheet.oddFooter.right.text = "&A - page &P of &N"
     sheet.oddFooter.right.size = 8
-    sheet.sheet_properties.tabColor = TAB_COLORS[sheet.title]
+    sheet.sheet_properties.tabColor = tab_color or TAB_COLORS[sheet.title]
 
 
 def exception_type(row):
