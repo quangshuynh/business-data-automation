@@ -176,6 +176,22 @@ PMT-281015 shows a current limitation: a run reconciles only the files it is
 given, so a September order's late payment needs September's order file in
 the same run.
 
+## Second demo: inventory clean and compare
+
+`python -m app.ordixa.inventory_demo` runs the spreadsheet workflows on the
+fictional Saltmarsh Mercantile inventory exports: it cleans the earlier
+week, compares both weeks by SKU, and verifies both runs. Its expected
+results, computed by hand, are in the
+[examples README](../examples/ordixa/README.md#inventory-exports-clean-and-compare-october-2026),
+and the workflows are documented in
+[SPREADSHEET_WORKFLOWS.md](SPREADSHEET_WORKFLOWS.md).
+
+<p align="center">
+  <img src="images/workbook-change-summary.png" width="700"
+       alt="Summary sheet of an Ordixa change report: an Incomplete comparison result with two incomplete findings and two warnings, then record counts, changed values by column, a reading guide, processing details, and input checksums">
+</p>
+<p align="center"><em>Change report Summary for the fictional inventory comparison. The result is Incomplete because three SKUs and one row without a SKU could not be classified.</em></p>
+
 ## How the screenshots are made
 
 Every image on this page comes from a real run of the demo. They are
@@ -185,6 +201,9 @@ LibreOffice and PyMuPDF and is not part of CI.
 - **Workbook sheets** are the generated `ordixa_exceptions.xlsx` rendered by
   LibreOffice Calc. For width, each capture uses a copy with the columns
   named above left out and an A3 page; no cell values are changed.
+- **The change report Summary** is LibreOffice Calc's PNG export of the
+  first page of the unmodified `comparison_report.xlsx` from the inventory
+  comparison.
 - **Terminal images** are the exact text printed by `inspect` and by the
   demo, drawn in a monospace font. The scratch run directory is shown as
   `output/demo`, the demo's default.

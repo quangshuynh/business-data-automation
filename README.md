@@ -53,6 +53,12 @@ will read the files, and `verify` re-checks a finished run before delivery.
   </tr>
 </table>
 
+<p align="center">
+  <img src="docs/images/workbook-change-summary.png" width="600"
+       alt="Summary sheet of an Ordixa change report showing an Incomplete comparison result with its findings, then added, removed, modified, unchanged, ambiguous, and invalid record counts">
+</p>
+<p align="center"><em>Change report Summary from the fictional inventory comparison: the result and its findings come first.</em></p>
+
 More in the [screenshot gallery](docs/DEMO.md).
 
 ## Quick start
