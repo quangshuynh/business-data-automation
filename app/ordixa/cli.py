@@ -2,10 +2,17 @@ import argparse
 import json
 import os
 import sys
+from collections import Counter
 from datetime import datetime, timezone
 from pathlib import Path
 
 from app.ordixa import __version__
+from app.ordixa.explain import (
+    explain_reconciliation_profile,
+    explain_table_profile,
+    format_reconciliation_explanation,
+    format_table_explanation,
+)
 from app.ordixa.inspection import (
     DEFAULT_MAX_ROWS,
     MAX_PREVIEW_ROWS,
@@ -21,12 +28,17 @@ from app.ordixa.manifest import (
 )
 from app.ordixa.pipeline import ReconciliationIntegrityError, process
 from app.ordixa.preflight import (
-    PERSONAL_HEADER,
     PROHIBITED_HEADER,
     format_preflight,
+    looks_personal,
     preflight,
 )
 from app.ordixa.profile import ProfileError, load_profile, read_profile_document
+from app.ordixa.table_preflight import (
+    format_table_preflight,
+    read_headers,
+    table_preflight,
+)
 from app.ordixa.tabular import (
     TabularIntegrityError,
     clean_table,
@@ -169,7 +181,24 @@ def build_parser():
     )
     check.add_argument("--profile", required=True, type=Path, help="TOML profile")
     check.add_argument(
-        "--input", type=Path, help="export directory to preflight against the profile"
+        "--input",
+        type=Path,
+        help=(
+            "export directory (reconciliation) or file (clean/compare) to "
+            "preflight against the profile"
+        ),
+    )
+    check.add_argument(
+        "--before", type=Path, help="earlier export, to preview a comparison"
+    )
+    check.add_argument("--after", type=Path, help="later export, with --before")
+    check.add_argument(
+        "--explain",
+        action="store_true",
+        help=(
+            "also explain the column mapping and normalization rules the profile "
+            "applies; still read-only and never prints cell values"
+        ),
     )
     check.add_argument(
         "--json", action="store_true", help="print the preflight report as JSON"
@@ -309,59 +338,112 @@ def check_profile_command(args):
     :param args: parsed arguments
     :returns: exit code
     """
-    if args.json and args.input is None:
-        report("--json needs --input", sys.stderr)
+    pair = (args.before, args.after)
+    if any(pair) and not all(pair):
+        report("--before and --after must be given together", sys.stderr)
+        return EXIT_USAGE
+    if all(pair) and args.input is not None:
+        report("use either --input or --before/--after, not both", sys.stderr)
+        return EXIT_USAGE
+    if args.json and args.input is None and not all(pair) and not args.explain:
+        report("--json needs --input, --before/--after, or --explain", sys.stderr)
         return EXIT_USAGE
     document, _ = read_profile_document(args.profile)
     if is_table_profile_document(document):
         return check_table_profile(args)
+    if all(pair):
+        report(
+            "--before/--after preview a compare profile; this is a reconciliation "
+            "profile, so use --input with the export directory",
+            sys.stderr,
+        )
+        return EXIT_USAGE
+
     profile = load_profile(args.profile)
+    explanation = explain_reconciliation_profile(profile) if args.explain else None
     if not args.json:
         # keeps --json output parseable as a single document
         report(f"profile {profile.name} {profile.version} is valid")
+        if explanation is not None:
+            print(format_reconciliation_explanation(explanation))
     if args.input is None:
+        if args.json:
+            print(json.dumps({"explain": explanation}, indent=2, ensure_ascii=False))
         return EXIT_OK
 
     warn_about_input_location(args.input)
     result = preflight(profile, args.input)
     if args.json:
+        if explanation is not None:
+            result["explain"] = explanation
         print(json.dumps(result, indent=2, ensure_ascii=False))
     else:
+        if explanation is not None:
+            print()
         print(format_preflight(result))
     return EXIT_INPUT if result["readiness"] == "blocked" else EXIT_OK
 
 
 def check_table_profile(args):
     """
-    validates a clean/compare profile and optionally dry-runs it on one file
+    validates a clean/compare profile and optionally preflights it on files
     :param args: parsed check-profile arguments
     :returns: exit code
     """
     profile = load_table_profile(args.profile)
+    if args.before is not None and profile.kind != "compare":
+        report(
+            f"--before/--after preview a comparison; this is a {profile.kind} "
+            "profile, so use --input with one file",
+            sys.stderr,
+        )
+        return EXIT_USAGE
+    if args.before is not None:
+        inputs = [("before", args.before), ("after", args.after)]
+    elif args.input is not None:
+        inputs = [("input", args.input)]
+    else:
+        inputs = []
+
     if not args.json:
         report(f"profile {profile.name} {profile.version} ({profile.kind}) is valid")
-    if args.input is None:
-        return EXIT_OK
+    for _, path in inputs:
+        warn_about_input_location(path.parent)
+    result = table_preflight(profile, inputs) if inputs else None
+    explanation = None
+    if args.explain:
+        explanation = explain_table_profile(profile, read_headers(profile, inputs))
 
-    warn_about_input_location(args.input.parent)
-    result = clean_table(profile, args.input)
-    counts = {
-        **result.counts(),
-        "issues": {
-            code: sum(1 for issue in result.issues if issue.code == code)
-            for code in sorted({issue.code for issue in result.issues})
-        },
-    }
     if args.json:
-        print(json.dumps(counts, indent=2))
+        document = {}
+        if args.input is not None and result["inputs"][0]["counts"] is not None:
+            document = legacy_dry_run(profile, args.input)
+        document.update(result or {})
+        if explanation is not None:
+            document["explain"] = explanation
+        print(json.dumps(document, indent=2, ensure_ascii=False))
     else:
-        warn_about_headers(result.header, profile)
-        for name, value in counts.items():
-            if name != "issues":
-                print(f"  {name.replace('_', ' ')}: {value}")
-        for code, count in counts["issues"].items():
-            print(f"  issue {code}: {count}")
+        if explanation is not None:
+            print(format_table_explanation(explanation))
+        if result is not None:
+            if explanation is not None:
+                print()
+            print(format_table_preflight(result))
+    if result is not None and result["readiness"] == "blocked":
+        return EXIT_INPUT
     return EXIT_OK
+
+
+def legacy_dry_run(profile, path):
+    """
+    builds the single-file JSON keys check-profile printed before 2.0.0
+    :param profile: table profile
+    :param path: input file
+    :returns: row counts plus issue counts by code
+    """
+    result = clean_table(profile, path)
+    issues = Counter(issue.code for issue in result.issues)
+    return {**result.counts(), "issues": dict(sorted(issues.items()))}
 
 
 def verify_command(args):
@@ -437,7 +519,7 @@ def warn_about_headers(header, profile):
                 f"credential data; {where}. Ask for an export without it",
                 sys.stderr,
             )
-        elif name in mapped and PERSONAL_HEADER.search(name):
+        elif name in mapped and looks_personal(name):
             report(
                 f"note: mapped column {name!r} may hold personal data; outputs "
                 "will contain it",
