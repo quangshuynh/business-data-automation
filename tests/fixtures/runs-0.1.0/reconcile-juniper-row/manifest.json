@@ -1,0 +1,126 @@
+{
+  "manifest_version": 1,
+  "result": {
+    "status": "completed",
+    "profile": {
+      "name": "juniper-row",
+      "version": "1.0.0",
+      "sha256": "91fa9366cc8c12096e706a8daa1690cf9ed3fc995d2f1c241c34cfe36e7829df",
+      "identifiers": {
+        "customer_id": "text",
+        "order_id": "text",
+        "payment_id": "text"
+      }
+    },
+    "code_version": {
+      "ordixa": "0.1.0",
+      "git_commit": "00b86d3510eea085934fe3f6e826a7463e2f2775",
+      "git_dirty": false
+    },
+    "inputs": [
+      {
+        "role": "customers",
+        "file": "customers.csv",
+        "sha256": "c3f93e166d0df89f37160cd4130ea9412cabd18bd1dbf234e4f29db230c6c8fa",
+        "data_rows": 3
+      },
+      {
+        "role": "orders",
+        "file": "orders_2026-10.csv",
+        "sha256": "21f8c11a557365c2e124b7d11c454b73e3f7dde76979d94b174add8153262192",
+        "data_rows": 5
+      },
+      {
+        "role": "payments",
+        "file": "payments_2026-10.csv",
+        "sha256": "5cca21fba5c50539fec61a9f85039adb2e5e198d9abf5fa864f1fbcc33757d74",
+        "data_rows": 6
+      }
+    ],
+    "ignored_files": 0,
+    "row_counts": {
+      "customers": {
+        "rows": 3,
+        "accepted": 3,
+        "rejected": 0,
+        "excluded": 0,
+        "accepted_with_warnings": 1
+      },
+      "orders": {
+        "rows": 5,
+        "accepted": 5,
+        "rejected": 0,
+        "excluded": 0,
+        "accepted_with_warnings": 1
+      },
+      "payments": {
+        "rows": 6,
+        "accepted": 6,
+        "rejected": 0,
+        "excluded": 0,
+        "accepted_with_warnings": 0
+      }
+    },
+    "issue_counts": {
+      "error": 0,
+      "warning": 3,
+      "excluded": 0
+    },
+    "artifact_rows": {
+      "reconciliation_ledger.csv": 5,
+      "rejected_rows.csv": 3
+    },
+    "totals": {
+      "orders": 5,
+      "order_value": "1595.49",
+      "transactions": 6,
+      "payments_received": "1569.99",
+      "refunds": "100.00",
+      "adjustments": "0.00",
+      "net_received": "1469.99",
+      "applied_to_orders": "1465.49",
+      "outstanding_balance": "130.00",
+      "overpayments": "4.50",
+      "status_counts": {
+        "paid": 2,
+        "partial": 2,
+        "unpaid": 0,
+        "overpaid": 1
+      },
+      "exception_orders": 3,
+      "flagged_orders": 2,
+      "rejected_rows": 0,
+      "excluded_rows": 0,
+      "warning_rows": 2
+    },
+    "currency": "USD",
+    "result_fingerprint": "c867b233e41a7ce2514ff483e60e1c3194293fec9e3fe4f3b7526e0bb32950da"
+  },
+  "execution": {
+    "run_id": "20261017T031030Z-870776",
+    "started_at": "2026-10-17T03:10:30.477745+00:00",
+    "finished_at": "2026-10-17T03:10:30.609529+00:00",
+    "reconciled_at": "2026-10-17T03:10:30.504184+00:00",
+    "output_directory": "run-20261017T031030Z-870776"
+  },
+  "outputs": [
+    {
+      "file": "reconciliation_ledger.csv",
+      "sha256": "ea7816aa6d2b14618b04222357fe887e71effbb88df12ce163b6f8111c6f7c6a",
+      "bytes": 1283,
+      "deterministic": true
+    },
+    {
+      "file": "rejected_rows.csv",
+      "sha256": "e7b0e1c4b0810182411b78f0af6d9bb9412040d0700051bbeec13906ce280944",
+      "bytes": 416,
+      "deterministic": true
+    },
+    {
+      "file": "ordixa_exceptions.xlsx",
+      "sha256": "ba2ff9e69a4901964774076d271edcda278028caf9dcf01c5c60803d458e082e",
+      "bytes": 12051,
+      "deterministic": false
+    }
+  ]
+}

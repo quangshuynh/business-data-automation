@@ -1,0 +1,8 @@
+order_ref,order_id,order_date,customer_id,customer_name,customer_email,customer_found,order_total,payments_received,refunds,adjustments,net_paid,balance_due,outstanding_balance,overpayment_amount,financial_status,discrepancy_flags,transaction_count,transaction_refs,last_payment_date,source_location
+#2001,2001,2026-08-02,7000101,Avery Quinn,avery.quinn@example.com,true,100.00,100.00,0.00,0.00,100.00,0.00,0.00,0.00,paid,,1,PMT-270001,2026-08-02,orders_2026-08.csv row 2
+#2002,2002,2026-08-04,7000102,Blake Moreno,blake.moreno@,true,200.00,175.00,0.00,0.00,175.00,25.00,25.00,0.00,partial,,2,"PMT-270002, PMT-270011",2026-08-04,orders_2026-08.csv row 3
+#2003,2003,2026-08-06,7000199,nan,nan,false,50.00,50.00,0.00,0.00,50.00,0.00,0.00,0.00,paid,,1,PMT-270003,2026-08-06,orders_2026-08.csv row 4
+#2007,2007,2026-08-12,7000106,Finley Ashdown,finley.ashdown@example.net,true,60.00,60.00,0.00,0.00,60.00,0.00,0.00,0.00,paid,,1,PMT-270005,2026-08-12,orders_2026-08.csv row 9
+#2010,2010,2026-09-05,7000107,Harper Ives,harper.ives@example.com,true,1300.00,1350.00,0.00,0.00,1350.00,-50.00,0.00,50.00,overpaid,order is overpaid,1,PMT-270012,2026-09-05,orders_2026-09.csv row 5
+#2011,2011,2026-09-06,,nan,nan,false,30.00,30.00,0.00,0.00,30.00,0.00,0.00,0.00,paid,,1,PMT-270016,2026-09-09,orders_2026-09.csv row 6
+#2012,2012,2026-09-07,7000101,Avery Quinn,avery.quinn@example.com,true,15.00,0.00,0.00,-3.00,-3.00,18.00,18.00,0.00,unpaid,net transaction amount is negative; source status says paid but amount is unpaid,1,PMT-270015,2026-09-08,orders_2026-09.csv row 7

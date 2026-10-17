@@ -1,0 +1,138 @@
+{
+  "manifest_version": 1,
+  "result": {
+    "status": "completed_with_rejections",
+    "profile": {
+      "name": "harbor-lane",
+      "version": "1.0.0",
+      "sha256": "2cdd509a0de8e579a7a66ed308e519908fe24a75eac8888509b072a53d58ea3d",
+      "identifiers": {
+        "customer_id": "numeric",
+        "order_id": "numeric",
+        "payment_id": "numeric"
+      }
+    },
+    "code_version": {
+      "ordixa": "0.1.0",
+      "git_commit": "00b86d3510eea085934fe3f6e826a7463e2f2775",
+      "git_dirty": false
+    },
+    "inputs": [
+      {
+        "role": "customers",
+        "file": "customers.csv",
+        "sha256": "5863b6d30daa97566dbd7ada7c07bd3a25251e5e6c862b0c623f43dcd60081fa",
+        "data_rows": 8
+      },
+      {
+        "role": "orders",
+        "file": "orders_2026-08.csv",
+        "sha256": "55d60dbbbfb899f6b9e3d324c8db826a77f843f990c432ea75652d43e026402e",
+        "data_rows": 9
+      },
+      {
+        "role": "orders",
+        "file": "orders_2026-09.csv",
+        "sha256": "261ff7ee2de012897ba88a657399953d384e785dd2561ab4cd7ee2c79f72ac69",
+        "data_rows": 6
+      },
+      {
+        "role": "payments",
+        "file": "payments_2026-08.csv",
+        "sha256": "969ac45902373da777c849d6f2d7f9b9773d3dfbeb9cd206f7bd7dda4f041ce9",
+        "data_rows": 9
+      },
+      {
+        "role": "payments",
+        "file": "payments_2026-09.csv",
+        "sha256": "54883a96f220a832888cdc90087e8491cc8eedbe712640cdbe81cdbcc772d85f",
+        "data_rows": 11
+      }
+    ],
+    "ignored_files": 0,
+    "row_counts": {
+      "customers": {
+        "rows": 8,
+        "accepted": 6,
+        "rejected": 2,
+        "excluded": 0,
+        "accepted_with_warnings": 4
+      },
+      "orders": {
+        "rows": 15,
+        "accepted": 7,
+        "rejected": 8,
+        "excluded": 0,
+        "accepted_with_warnings": 2
+      },
+      "payments": {
+        "rows": 20,
+        "accepted": 8,
+        "rejected": 11,
+        "excluded": 1,
+        "accepted_with_warnings": 1
+      }
+    },
+    "issue_counts": {
+      "error": 21,
+      "warning": 7,
+      "excluded": 1
+    },
+    "artifact_rows": {
+      "reconciliation_ledger.csv": 7,
+      "rejected_rows.csv": 29
+    },
+    "totals": {
+      "orders": 7,
+      "order_value": "1755.00",
+      "transactions": 8,
+      "payments_received": "1765.00",
+      "refunds": "0.00",
+      "adjustments": "-3.00",
+      "net_received": "1762.00",
+      "applied_to_orders": "1715.00",
+      "outstanding_balance": "43.00",
+      "overpayments": "50.00",
+      "status_counts": {
+        "paid": 4,
+        "partial": 1,
+        "unpaid": 1,
+        "overpaid": 1
+      },
+      "exception_orders": 3,
+      "flagged_orders": 2,
+      "rejected_rows": 21,
+      "excluded_rows": 1,
+      "warning_rows": 7
+    },
+    "currency": "USD",
+    "result_fingerprint": "be006fa316ab036b93bfa7e51f56bbecb4ee64b496db888ff0d78f343aa8bbeb"
+  },
+  "execution": {
+    "run_id": "20261017T031029Z-cf648f",
+    "started_at": "2026-10-17T03:10:29.467561+00:00",
+    "finished_at": "2026-10-17T03:10:29.614898+00:00",
+    "reconciled_at": "2026-10-17T03:10:29.498174+00:00",
+    "output_directory": "run-20261017T031029Z-cf648f"
+  },
+  "outputs": [
+    {
+      "file": "reconciliation_ledger.csv",
+      "sha256": "2f12f67d6dc7ccc5c66ab991d784454ca6b954fa36979d0fc07a970d4fb965f5",
+      "bytes": 1558,
+      "deterministic": true
+    },
+    {
+      "file": "rejected_rows.csv",
+      "sha256": "32bab7724c00b294f014ba76847d614bc63cba8a4c5c15955c4959797f821507",
+      "bytes": 4857,
+      "deterministic": true
+    },
+    {
+      "file": "ordixa_exceptions.xlsx",
+      "sha256": "f48843a504f0af7376eeff5872e5834d1dd79bbe57600d59e065e1769ab66f2e",
+      "bytes": 15333,
+      "deterministic": false
+    }
+  ]
+}

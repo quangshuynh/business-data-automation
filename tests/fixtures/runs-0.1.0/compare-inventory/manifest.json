@@ -1,0 +1,144 @@
+{
+  "manifest_version": 1,
+  "result": {
+    "workflow": "compare",
+    "workflow_version": 1,
+    "status": "completed_with_rejections",
+    "profile": {
+      "name": "inventory-compare",
+      "version": "1.0.0",
+      "kind": "compare",
+      "sha256": "b8500cc1a7b9bbd4b016f281104c159219ddd19cb23580a48120a5c4990ecdd7",
+      "key": [
+        "sku"
+      ]
+    },
+    "code_version": {
+      "ordixa": "0.1.0",
+      "git_commit": "00b86d3510eea085934fe3f6e826a7463e2f2775",
+      "git_dirty": false
+    },
+    "inputs": [
+      {
+        "role": "before",
+        "file": "inventory-before.csv",
+        "sha256": "30aac1b3c76317bd8a54dc4146ef406d21c974d0b89ce903637d4b16ce0c15bd",
+        "data_rows": 121
+      },
+      {
+        "role": "after",
+        "file": "inventory-after.csv",
+        "sha256": "0e35e319f94b18c6cfda75ae6774fa1c6cae215dc6a69855239e62cb714ac261",
+        "data_rows": 124
+      }
+    ],
+    "issue_counts": {
+      "Rejected": 5,
+      "Removed duplicate": 1,
+      "Note": 2
+    },
+    "compared_columns": [
+      "product_name",
+      "category",
+      "unit_price",
+      "quantity_on_hand",
+      "supplier"
+    ],
+    "ignored_columns": [
+      "last_counted"
+    ],
+    "row_counts": {
+      "before": {
+        "rows_read": 121,
+        "rows_written": 120,
+        "rows_rejected": 0,
+        "duplicate_rows_removed": 1,
+        "duplicate_keys": 1,
+        "conflicting_keys": 0,
+        "unmapped_columns": 1,
+        "missing_optional_columns": 0,
+        "whitespace_normalized": 6,
+        "blank_tokens_normalized": 3,
+        "values_reformatted": 33
+      },
+      "after": {
+        "rows_read": 124,
+        "rows_written": 119,
+        "rows_rejected": 5,
+        "duplicate_rows_removed": 0,
+        "duplicate_keys": 1,
+        "conflicting_keys": 1,
+        "unmapped_columns": 1,
+        "missing_optional_columns": 0,
+        "whitespace_normalized": 2,
+        "blank_tokens_normalized": 2,
+        "values_reformatted": 1
+      }
+    },
+    "comparison": {
+      "before_rows": 121,
+      "after_rows": 124,
+      "before_records": 120,
+      "after_records": 119,
+      "added": 6,
+      "removed": 4,
+      "modified": 19,
+      "unchanged": 94,
+      "ambiguous_keys": 1,
+      "invalid_keys": 2,
+      "unkeyed_rejected_rows": 1,
+      "changed_values": 20,
+      "changed_values_by_column": {
+        "product_name": 1,
+        "category": 1,
+        "unit_price": 8,
+        "quantity_on_hand": 10
+      }
+    },
+    "artifact_rows": {
+      "added_records.csv": 6,
+      "removed_records.csv": 4,
+      "modified_values.csv": 20,
+      "comparison_issues.csv": 8
+    },
+    "result_fingerprint": "ac5c90fd51c2b48a5d82213f0ce47f7b0c80d3da227aa55eff3101525af0060e"
+  },
+  "execution": {
+    "run_id": "20261017T031032Z-a6fcc8",
+    "started_at": "2026-10-17T03:10:32.409148+00:00",
+    "finished_at": "2026-10-17T03:10:32.521175+00:00",
+    "output_directory": "run-20261017T031032Z-a6fcc8"
+  },
+  "outputs": [
+    {
+      "file": "added_records.csv",
+      "sha256": "b912ece28018737fa4fb71c62b92c935f0409d8c972d7ef35aeb41ca23e3983e",
+      "bytes": 546,
+      "deterministic": true
+    },
+    {
+      "file": "removed_records.csv",
+      "sha256": "1a7d64f0bcb04d16dce8826853e7414e7f0babcabb9522c4e23ee44b144d91f8",
+      "bytes": 381,
+      "deterministic": true
+    },
+    {
+      "file": "modified_values.csv",
+      "sha256": "c581bd4a16dc2f0cd8d5360c3c3f388c55f3db3bd9c6f2a322d2de5061740755",
+      "bytes": 766,
+      "deterministic": true
+    },
+    {
+      "file": "comparison_issues.csv",
+      "sha256": "76a8445fca6c6b7f05c9bc65f68ca06f5409289c2043004a8d97de28a6967c64",
+      "bytes": 1100,
+      "deterministic": true
+    },
+    {
+      "file": "comparison_report.xlsx",
+      "sha256": "bc5e884d9ef93ae3345df5ae734349cd73c9a496a993efdd80a6fb56e3983961",
+      "bytes": 12719,
+      "deterministic": false
+    }
+  ]
+}

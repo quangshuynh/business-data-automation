@@ -1,0 +1,73 @@
+{
+  "manifest_version": 1,
+  "result": {
+    "workflow": "clean",
+    "workflow_version": 1,
+    "status": "completed",
+    "profile": {
+      "name": "inventory-clean",
+      "version": "1.0.0",
+      "kind": "clean",
+      "sha256": "4dc2cd463e48c7ac6dff077a9fd691b72373b21c690954667e53338716e5fa6b",
+      "key": [
+        "sku"
+      ]
+    },
+    "code_version": {
+      "ordixa": "0.1.0",
+      "git_commit": "00b86d3510eea085934fe3f6e826a7463e2f2775",
+      "git_dirty": false
+    },
+    "inputs": [
+      {
+        "role": "input",
+        "file": "inventory-before.csv",
+        "sha256": "30aac1b3c76317bd8a54dc4146ef406d21c974d0b89ce903637d4b16ce0c15bd",
+        "data_rows": 121
+      }
+    ],
+    "issue_counts": {
+      "Rejected": 0,
+      "Removed duplicate": 1,
+      "Note": 1
+    },
+    "row_counts": {
+      "rows_read": 121,
+      "rows_written": 120,
+      "rows_rejected": 0,
+      "duplicate_rows_removed": 1,
+      "duplicate_keys": 1,
+      "conflicting_keys": 0,
+      "unmapped_columns": 1,
+      "missing_optional_columns": 0,
+      "whitespace_normalized": 6,
+      "blank_tokens_normalized": 3,
+      "values_reformatted": 33
+    },
+    "artifact_rows": {
+      "cleaned_data.csv": 120,
+      "cleaning_issues.csv": 2
+    },
+    "result_fingerprint": "1d07cb3924a2582c0ac294179f21f9fc39f85f591d4687d0197893a26109e9d7"
+  },
+  "execution": {
+    "run_id": "20261017T031031Z-d0086e",
+    "started_at": "2026-10-17T03:10:31.470022+00:00",
+    "finished_at": "2026-10-17T03:10:31.544719+00:00",
+    "output_directory": "run-20261017T031031Z-d0086e"
+  },
+  "outputs": [
+    {
+      "file": "cleaned_data.csv",
+      "sha256": "8462ec1d73bd8c6e405d5d9b8b4f3556b039d079d86e04939f7a6ac59777edde",
+      "bytes": 9838,
+      "deterministic": true
+    },
+    {
+      "file": "cleaning_issues.csv",
+      "sha256": "749e472a39e79ca4214a3884555c05a0a39053144c3a4c23c9a0837b470b0ba8",
+      "bytes": 324,
+      "deterministic": true
+    }
+  ]
+}

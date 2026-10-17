@@ -1,0 +1,6 @@
+order_ref,order_id,order_date,customer_id,customer_name,customer_email,customer_found,order_total,payments_received,refunds,adjustments,net_paid,balance_due,outstanding_balance,overpayment_amount,financial_status,discrepancy_flags,transaction_count,transaction_refs,last_payment_date,source_location
+INV-A1049,INV-A1049,2026-10-03,C-77,Jordan Ash,jordan.ash@example.org,true,1200.00,1200.00,100.00,0.00,1100.00,100.00,100.00,0.00,partial,source status says paid but amount is partial,2,"PAY_9A001, PAY_9A002",2026-10-06,orders_2026-10.csv row 4
+ORD-2026-00009,ORD-2026-00009,2026-10-05,nan,nan,nan,false,19.99,19.99,0.00,0.00,19.99,0.00,0.00,0.00,paid,,1,PAY_9A004,2026-10-05,orders_2026-10.csv row 6
+ORD-2026-00142,ORD-2026-00142,2026-10-01,00012345,Morgan Vale,morgan.vale@example.com,true,250.00,250.00,0.00,0.00,250.00,0.00,0.00,0.00,paid,,1,PAY_8F3K2,2026-10-01,orders_2026-10.csv row 2
+ORD-2026-00143,ORD-2026-00143,2026-10-02,00012346,nan,sky.lin@example.net,true,80.00,50.00,0.00,0.00,50.00,30.00,30.00,0.00,partial,,1,PAY_8F3K3,2026-10-02,orders_2026-10.csv row 3
+SQ-2026-10-001,SQ-2026-10-001,2026-10-04,00012345,Morgan Vale,morgan.vale@example.com,true,45.50,50.00,0.00,0.00,50.00,-4.50,0.00,4.50,overpaid,order is overpaid,1,PAY_9A003,2026-10-04,orders_2026-10.csv row 5

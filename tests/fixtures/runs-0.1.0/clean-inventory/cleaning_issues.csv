@@ -1,0 +1,3 @@
+role,file,row,outcome,code,key,column,source_column,value,message
+input,inventory-before.csv,,Note,unmapped_columns,,,,,1 source column(s) not in the profile were left out of the outputs: Supplier Contact
+input,inventory-before.csv,44,Removed duplicate,duplicate_row,SKU-0042,,,,"identical to source row 43, which was kept"
